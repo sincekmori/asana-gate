@@ -143,9 +143,22 @@ function applies(rule: CompiledRule, action: Action): boolean {
 	return rule.actions.has(action) && !(isFilterRule(rule) && verbOf(action) === "read");
 }
 
-/** Evaluates an action for one branch: most specific rule wins, deny wins ties, default deny. */
-function decideInBranch({ policy, branch, facts, action }: BranchQuery): BranchDecision {
-	const considered = policy.rules.filter(
+/** The rules of each file in force; a policy without layers counts as one file. */
+function rulesOf(policy: Policy): readonly (readonly CompiledRule[])[] {
+	const perLayer = policy.layers
+		.map((layer, index) =>
+			layer.otherWorkspace === undefined
+				? policy.rules.filter((rule) => rule.layer === index)
+				: undefined,
+		)
+		.filter((rules) => rules !== undefined);
+	return perLayer.length === 0 ? [policy.rules] : perLayer;
+}
+
+/** Evaluates an action for one branch under some rules: most specific rule wins, deny wins ties, no rule means no decision. */
+function decideRules(rules: readonly CompiledRule[], query: BranchQuery): BranchDecision {
+	const { branch, facts, action } = query;
+	const considered = rules.filter(
 		(rule) => applies(rule, action) && whereMatches(rule.where, branch, facts),
 	);
 	const [first] = considered;
@@ -162,6 +175,16 @@ function decideInBranch({ policy, branch, facts, action }: BranchQuery): BranchD
 		(rule) => compareSpecificity(rule.specificity, best.specificity) === 0,
 	);
 	return { allowed: winners.every((rule) => rule.effect === "allow"), winners, considered };
+}
+
+/** Evaluates an action for one branch: every file in force must allow it, each by its own most specific rule. */
+function decideInBranch(query: BranchQuery): BranchDecision {
+	const decisions = rulesOf(query.policy).map((rules) => decideRules(rules, query));
+	return {
+		allowed: decisions.every((decision) => decision.allowed),
+		winners: decisions.flatMap((decision) => decision.winners),
+		considered: decisions.flatMap((decision) => decision.considered),
+	};
 }
 
 /** The outcome of evaluating one action for an object: AND over its branches. */
@@ -206,48 +229,6 @@ function allowedActions(policy: Policy, facts: Facts, resource: Resource): Actio
 		.filter((action) => isAllowed(policy, facts, action));
 }
 
-function branchFieldAllowlist(query: BranchQuery, resource: Resource): Set<string> | undefined {
-	const { winners } = decideInBranch(query);
-	// A winning allow without `fields` for the resource grants the whole update.
-	if (winners.length === 0 || winners.some((rule) => rule.fields?.has(resource) !== true)) {
-		return undefined;
-	}
-	const union = new Set<string>();
-	for (const rule of winners) {
-		for (const field of rule.fields?.get(resource) ?? []) {
-			union.add(field);
-		}
-	}
-	return union;
-}
-
-/**
- * The fields an `update` of `resource` may touch, or `undefined` when the
- * policy does not restrict them. Per branch, the allowlist is the union of the
- * `fields` of the winning allow rules (unrestricted when any of them declares
- * none, since that rule grants the whole update); across branches, the
- * intersection.
- */
-function fieldAllowlist(
-	policy: Policy,
-	facts: Facts,
-	resource: Resource,
-): ReadonlySet<string> | undefined {
-	const action = actionOf(resource, "update");
-	const lists = facts.branches
-		.map((branch) => branchFieldAllowlist({ policy, branch, facts, action }, resource))
-		.filter((fields): fields is Set<string> => fields !== undefined);
-	const [first, ...rest] = lists;
-	if (first === undefined) {
-		return undefined;
-	}
-	let intersection = first;
-	for (const fields of rest) {
-		intersection = new Set([...intersection].filter((field) => fields.has(field)));
-	}
-	return intersection;
-}
-
 /** A full account of how the policy treats one object, for `explain`. */
 interface Explanation {
 	readonly resource: Resource;
@@ -263,23 +244,27 @@ function explainResource(policy: Policy, facts: Facts, resource: Resource): Expl
 	return { resource, visible: isVisible(policy, facts, resource), actions };
 }
 
-/** The actions some `allow` statement grants somewhere in the policy. */
+/** The actions every file in force allows somewhere: what the policy could ever allow. */
 function grantedActions(policy: Policy): Set<Action> {
-	return new Set(
-		policy.rules.filter((rule) => rule.effect === "allow").flatMap((rule) => [...rule.actions]),
+	const perLayer = rulesOf(policy).map(
+		(rules) =>
+			new Set(rules.filter((rule) => rule.effect === "allow").flatMap((rule) => [...rule.actions])),
 	);
+	const [first = new Set<Action>(), ...rest] = perLayer;
+	return new Set([...first].filter((action) => rest.every((actions) => actions.has(action))));
 }
 
 export {
 	allowedActions,
 	decide,
+	decideRules,
 	EMPTY,
 	explainResource,
-	fieldAllowlist,
 	grantedActions,
 	isAllowed,
 	isFilterRule,
 	isVisible,
+	rulesOf,
 	whereMatches,
 	WORKSPACE_BRANCH,
 	workspaceFacts,

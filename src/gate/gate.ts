@@ -14,11 +14,11 @@ import {
 	type Explanation,
 	explainResource,
 	type Facts,
-	fieldAllowlist,
 	isAllowed,
 	isVisible,
 } from "../policy/evaluate.ts";
-import type { Policy } from "../policy/types.ts";
+import { fieldAllowlist } from "../policy/fields.ts";
+import { type Policy, ruleLabel } from "../policy/types.ts";
 import { ConfirmationRequiredError } from "./confirmation.ts";
 import {
 	constraintViolation,
@@ -336,7 +336,7 @@ class Gate {
 					});
 				}
 				for (const limit of effective.limits.get(action) ?? []) {
-					const key = `${limit.rule.index}:${action}`;
+					const key = `${limit.rule.layer}:${limit.rule.index}:${action}`;
 					const entry = limits.get(key) ?? { limit, units: new Set<number>() };
 					entry.units.add(check.unit ?? 0);
 					limits.set(key, entry);
@@ -376,7 +376,12 @@ class Gate {
 		const recent = (this.usage.get(key) ?? []).filter((at) => now - at < limit.perMs);
 		if (recent.length + count > limit.max) {
 			this.usage.set(key, recent);
-			throw limitExceeded({ action, max: limit.max, per: limit.per, ruleIndex: rule.index });
+			throw limitExceeded({
+				action,
+				max: limit.max,
+				per: limit.per,
+				rule: ruleLabel(this.policy, rule),
+			});
 		}
 		for (let taken = 0; taken < count; taken += 1) {
 			recent.push(now);

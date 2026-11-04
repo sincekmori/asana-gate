@@ -11,11 +11,11 @@ import {
 	decide,
 	EMPTY,
 	type Facts,
-	fieldAllowlist,
 	isAllowed,
 	isVisible,
 	workspaceFacts,
 } from "../src/policy/evaluate.ts";
+import { fieldAllowlist } from "../src/policy/fields.ts";
 import { parsePolicy } from "../src/policy/load.ts";
 import { stateMatches } from "../src/policy/state.ts";
 import { examplePolicy, tagged, taskIn } from "./helpers/example-policy.ts";

@@ -12,7 +12,13 @@ import { matchRoute } from "../src/gate/router.ts";
 import { TOOLS } from "../src/mcp/tools.ts";
 import type { Policy } from "../src/policy/types.ts";
 
-const POLICY: Policy = { workspace: "1", workspaceName: "Acme", me: { gid: "51" }, rules: [] };
+const POLICY: Policy = {
+	workspace: "1",
+	workspaceName: "Acme",
+	me: { gid: "51" },
+	layers: [{ file: "policy", role: "project" }],
+	rules: [],
+};
 
 /**
  * Members the live API accepts though Asana's definition does not list them:

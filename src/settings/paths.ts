@@ -15,6 +15,9 @@ const POLICY_FILE = "policy.yaml";
 /** The file a Personal Access Token may be kept in, inside a project's or the home directory's `.asana-gate`. */
 const TOKEN_FILE = "token";
 
+/** An administrator's policy, inside the managed directory: every policy in force is bounded by it. */
+const MANAGED_POLICY_FILE = "managed-policy.yaml";
+
 /** Where asana-gate keeps its own files: `~/.asana-gate`, unless `ASANA_GATE_HOME` says otherwise. */
 function homeDir(env: NodeJS.ProcessEnv): string {
 	return envValue(env, "ASANA_GATE_HOME") ?? join(homedir(), PROJECT_DIR);
@@ -70,4 +73,13 @@ function findProjectDir(cwd: string, home?: string): Promise<string | undefined>
 	return firstWhere(ancestors, (dir) => isDirectory(join(dir, PROJECT_DIR)));
 }
 
-export { findProjectDir, homeDir, managedDir, POLICY_FILE, PROJECT_DIR, resolveFrom, TOKEN_FILE };
+export {
+	findProjectDir,
+	homeDir,
+	MANAGED_POLICY_FILE,
+	managedDir,
+	POLICY_FILE,
+	PROJECT_DIR,
+	resolveFrom,
+	TOKEN_FILE,
+};

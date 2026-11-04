@@ -217,7 +217,9 @@ const RuleSchema = z
 const PolicyFileSchema = z.strictObject({
 	$schema: z.string().optional(),
 	version: z.literal(1),
-	workspace: RefSchema.describe("The one workspace this policy governs (gid or name)"),
+	workspace: RefSchema.optional().describe(
+		"The one workspace this policy governs (gid or name); a file that bounds the project's policy may leave it out and is then in force wherever that one is",
+	),
 	rules: z.array(RuleSchema).describe("The rules; order does not matter (specificity does)"),
 });
 

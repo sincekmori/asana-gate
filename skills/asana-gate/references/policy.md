@@ -209,3 +209,14 @@ Limits count per rule and action inside one gate process, over a sliding window,
 
 Rule order in the file does not matter.
 `asana-gate explain <gid>` shows how the policy treats one object, which rules decided each action, and the constraints in force on it.
+
+### Several policies
+
+The policy in force is made of up to three files: the project's `.asana-gate/policy.yaml` (or the file `--policy` points at), your own `~/.asana-gate/policy.yaml`, and an administrator's `managed-policy.yaml` beside the managed settings.
+Every one of them that exists is read, and an action is allowed only when every file allows it: each file is evaluated on its own, with its own most specific rule deciding and its own default of deny, and the answers are combined with AND.
+So your own policy is the most you can ever do in any project, the administrator's the most anyone on the machine can do, and the project's what this project allows within those bounds; a file that does not mention an action denies it, exactly as a lone policy would.
+With `allow: [read]` in one file and `allow: [task:read]` in another, only tasks can be read, whichever file says which; with `allow: [team:read]` in one and `allow: [task:read]` in the other, nothing can.
+Constraints add up across files the way matching rules of one file do, `fields` allowlists intersect, and where two files `apply` the same member at equal specificity the stronger wins: the administrator's, then the project's, then yours.
+A file other than the project's may leave `workspace` out, and is then in force wherever the project's policy is; one that names another workspace is not in force there, which `check` reports.
+When the project has no policy, yours is the policy, bounded by the administrator's; when only the administrator's exists, it is the policy.
+`check` lists every file in force, and messages name a rule by its file when there are several (`user rules[2]`).

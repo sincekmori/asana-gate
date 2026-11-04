@@ -76,11 +76,12 @@ function limitExceeded(limit: {
 	action: string;
 	max: number;
 	per: string;
-	ruleIndex: number;
+	/** The rule that set the limit, as messages name it. */
+	rule: string;
 }): GateError {
 	return new GateError(
 		429,
-		`asana-gate: ${limit.action} is limited to ${limit.max} per ${limit.per} by rules[${limit.ruleIndex}]; try again later`,
+		`asana-gate: ${limit.action} is limited to ${limit.max} per ${limit.per} by ${limit.rule}; try again later`,
 		GATE_HELP,
 	);
 }

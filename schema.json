@@ -10,9 +10,9 @@
       "const": 1
     },
     "workspace": {
+      "description": "The one workspace this policy governs (gid or name); a file that bounds the project's policy may leave it out and is then in force wherever that one is",
       "type": "string",
-      "minLength": 1,
-      "description": "The one workspace this policy governs (gid or name)"
+      "minLength": 1
     },
     "rules": {
       "type": "array",
@@ -815,7 +815,7 @@
       "description": "The rules; order does not matter (specificity does)"
     }
   },
-  "required": ["version", "workspace", "rules"],
+  "required": ["version", "rules"],
   "additionalProperties": false,
   "$id": "https://raw.githubusercontent.com/sincekmori/asana-gate/main/schema.json",
   "title": "asana-gate policy",

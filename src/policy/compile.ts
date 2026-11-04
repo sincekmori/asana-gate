@@ -1,25 +1,21 @@
 // Copyright 2026 Shinsuke Mori
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-	type Action,
-	actionOf,
-	FIELD_VERBS,
-	isResource,
-	type Resource,
-	RESOURCE_VERBS,
-} from "../catalog/resources.ts";
+import type { Action } from "../catalog/resources.ts";
 import { expandActionPatterns } from "./actions.ts";
-import { assertRequestMember, compileConstraints } from "./compile-constraints.ts";
+import { compileConstraints, compileFields } from "./compile-constraints.ts";
 import { isGid, type PolicyFile, type PolicyRule, type PolicyWhere } from "./schema.ts";
 import { compileState, specificityOf } from "./scope.ts";
 import {
 	type CompiledCustomFieldPredicate,
 	type CompiledRule,
 	type CompiledWhere,
+	LAYER_RANK,
+	type LayerRole,
 	type Me,
 	type Policy,
 	PolicyError,
+	type PolicyLayer,
 } from "./types.ts";
 
 /** A custom field definition, as far as compilation needs it. */
@@ -137,35 +133,6 @@ async function compileWhere(
 	};
 }
 
-function compileFields(
-	fields: PolicyRule["fields"],
-	allowed: Set<Action>,
-	index: number,
-): ReadonlyMap<Resource, ReadonlySet<string>> | undefined {
-	if (fields === undefined) {
-		return undefined;
-	}
-	const map = new Map<Resource, ReadonlySet<string>>();
-	for (const [resource, names] of Object.entries(fields)) {
-		if (!isResource(resource)) {
-			throw new PolicyError(`rules[${index}].fields: unknown resource "${resource}"`);
-		}
-		if (!(RESOURCE_VERBS[resource] as readonly string[]).includes("update")) {
-			throw new PolicyError(`rules[${index}].fields: ${resource} has no update verb`);
-		}
-		allowed.add(actionOf(resource, "update"));
-		for (const name of names) {
-			assertRequestMember(resource, name, `rules[${index}].fields`);
-			const verb = FIELD_VERBS[resource]?.[name];
-			if (verb !== undefined) {
-				allowed.add(actionOf(resource, verb));
-			}
-		}
-		map.set(resource, new Set(names));
-	}
-	return map;
-}
-
 function prefixed(error: unknown, prefix: string): unknown {
 	return error instanceof PolicyError ? new PolicyError(`${prefix}: ${error.message}`) : error;
 }
@@ -173,8 +140,9 @@ function prefixed(error: unknown, prefix: string): unknown {
 async function compileRule(
 	raw: PolicyRule,
 	index: number,
-	context: { resolver: NameResolver; workspace: string },
+	context: { resolver: NameResolver; workspace: string; layer: number },
 ): Promise<CompiledRule[]> {
+	const { layer } = context;
 	const [where, constraints] = await Promise.all([
 		compileWhere(raw.where, context.resolver, context.workspace).catch((error: unknown) => {
 			throw prefixed(error, `rules[${index}].where`);
@@ -195,6 +163,7 @@ async function compileRule(
 		const fields = compileFields(raw.fields, actions, index);
 		compiled.push({
 			index,
+			layer,
 			effect: "allow",
 			where,
 			actions,
@@ -206,6 +175,7 @@ async function compileRule(
 	if (raw.deny !== undefined) {
 		compiled.push({
 			index,
+			layer,
 			effect: "deny",
 			where,
 			actions: expand(raw.deny, "deny"),
@@ -216,6 +186,7 @@ async function compileRule(
 	if (constraints !== undefined) {
 		compiled.push({
 			index,
+			layer,
 			effect: "constrain",
 			where,
 			actions: new Set(),
@@ -227,19 +198,91 @@ async function compileRule(
 	return compiled;
 }
 
-/**
- * Resolves every name in a validated policy file and prepares it for
- * evaluation. Rules that carry both `allow` and `deny` become two compiled
- * rules sharing the same index.
- */
-async function compilePolicy(file: PolicyFile, resolver: NameResolver): Promise<Policy> {
-	const [workspace, me] = await Promise.all([resolver.workspace(file.workspace), resolver.me()]);
-	const context = { resolver, workspace: workspace.gid };
-	const perRule = await Promise.all(
-		file.rules.map((raw, index) => compileRule(raw, index, context)),
-	);
-	return { workspace: workspace.gid, workspaceName: workspace.name, me, rules: perRule.flat() };
+/** One policy file to compile, and where it comes from. */
+interface PolicySource {
+	readonly file: PolicyFile;
+	/** The file's path, for messages. */
+	readonly path: string;
+	readonly role: LayerRole;
 }
 
-export { compilePolicy };
-export type { CustomFieldDefinition, NameResolver };
+/** A layer to compile: its source, its index, whether it names the workspace, and whether errors name its file. */
+interface LayerEntry {
+	readonly source: PolicySource;
+	readonly layer: number;
+	readonly first: boolean;
+	readonly named: boolean;
+}
+
+/** A layer compiled, or kept out of force when it names another workspace. */
+async function compiledLayer(
+	entry: LayerEntry,
+	governed: { readonly gid: string; readonly name: string },
+	resolver: NameResolver,
+): Promise<{ layer: PolicyLayer; rules: CompiledRule[] }> {
+	const { source, layer, first, named } = entry;
+	const { path: file, role } = source;
+	try {
+		const own =
+			first || source.file.workspace === undefined
+				? governed
+				: await resolver.workspace(source.file.workspace);
+		if (own.gid !== governed.gid) {
+			return { layer: { file, role, otherWorkspace: own.name }, rules: [] };
+		}
+		const context = { resolver, workspace: governed.gid, layer };
+		const perRule = await Promise.all(
+			source.file.rules.map((raw, index) => compileRule(raw, index, context)),
+		);
+		return { layer: { file, role }, rules: perRule.flat() };
+	} catch (error) {
+		throw named ? prefixed(error, file) : error;
+	}
+}
+
+/**
+ * Compiles policy files into one policy, which allows an action only when
+ * every file does. Names resolve in the workspace the first file names; a
+ * later file that names another workspace is kept but not in force.
+ */
+async function compilePolicies(
+	sources: readonly PolicySource[],
+	resolver: NameResolver,
+): Promise<Policy> {
+	const [first] = sources;
+	if (first === undefined) {
+		throw new PolicyError("no policy to compile");
+	}
+	if (first.file.workspace === undefined) {
+		throw new PolicyError(
+			`${first.path}: this policy must name its workspace (only the files that follow it may leave it out)`,
+		);
+	}
+	const [workspace, me] = await Promise.all([
+		resolver.workspace(first.file.workspace),
+		resolver.me(),
+	]);
+	const named = sources.length > 1;
+	// From the weakest layer to the strongest, so the strongest wins ties.
+	const ordered = sources
+		.map((source) => ({ source, first: source === first, named }))
+		.toSorted((a, b) => LAYER_RANK[a.source.role] - LAYER_RANK[b.source.role]);
+	const compiled = await Promise.all(
+		ordered.map((entry, layer) => compiledLayer({ ...entry, layer }, workspace, resolver)),
+	);
+	return {
+		workspace: workspace.gid,
+		workspaceName: workspace.name,
+		me,
+		layers: compiled.map((entry) => entry.layer),
+		rules: compiled.flatMap((entry) => entry.rules),
+	};
+}
+
+/** Compiles one policy file on its own. */
+function compilePolicy(file: PolicyFile, resolver: NameResolver): Promise<Policy> {
+	return compilePolicies([{ file, path: "policy", role: "project" }], resolver);
+}
+
+export { compilePolicies, compilePolicy };
+export type { CustomFieldDefinition, NameResolver, PolicySource };

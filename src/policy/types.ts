@@ -83,6 +83,25 @@ interface CompiledConstraints {
 	readonly labels: ReadonlyMap<string, string>;
 }
 
+/** Where a policy file sits: the project's (or the one pointed at), the user's own, or an administrator's. */
+type LayerRole = "project" | "user" | "managed";
+
+/** Layers from the weakest to the strongest: at equal specificity, the stronger layer's `apply` wins. */
+const LAYER_RANK: Readonly<Record<LayerRole, number>> = { user: 0, project: 1, managed: 2 };
+
+/**
+ * One policy file of the policy in force. The files are peers: an action is
+ * allowed only when every file in force allows it, so each one bounds the
+ * others; their order matters for `apply` ties alone.
+ */
+interface PolicyLayer {
+	/** The file, for messages. */
+	readonly file: string;
+	readonly role: LayerRole;
+	/** The other workspace the file names, when it does: the file is then not in force here. */
+	readonly otherWorkspace?: string;
+}
+
 /**
  * One statement of a rule with a resolved scope: an `allow`, a `deny`, or
  * the rule's constraints (`constrain`, which takes no part in permission
@@ -91,6 +110,8 @@ interface CompiledConstraints {
 interface CompiledRule {
 	/** Index of the rule in the policy file (one file rule may yield several statements). */
 	readonly index: number;
+	/** The layer (index into {@link Policy.layers}) the rule comes from. */
+	readonly layer: number;
 	readonly effect: "allow" | "deny" | "constrain";
 	readonly where: CompiledWhere;
 	readonly actions: ReadonlySet<Action>;
@@ -116,6 +137,8 @@ interface Policy {
 	readonly workspace: string;
 	readonly workspaceName: string;
 	readonly me: Me;
+	/** The policy files, from the weakest to the strongest ({@link LAYER_RANK}); every one of them must allow an action. */
+	readonly layers: readonly PolicyLayer[];
 	readonly rules: readonly CompiledRule[];
 }
 
@@ -124,14 +147,22 @@ function compareSpecificity(a: Specificity, b: Specificity): number {
 	return a.level - b.level || a.cross - b.cross;
 }
 
-export { compareSpecificity, LEVELS, PolicyError };
+/** How messages name a rule: `rules[2]`, or `user rules[2]` when the policy has several layers. */
+function ruleLabel(policy: Policy, rule: Pick<CompiledRule, "index" | "layer">): string {
+	const role = policy.layers.length > 1 ? `${policy.layers[rule.layer]?.role ?? "?"} ` : "";
+	return `${role}rules[${rule.index}]`;
+}
+
+export { compareSpecificity, LAYER_RANK, LEVELS, PolicyError, ruleLabel };
 export type {
 	CompiledConstraints,
 	CompiledCustomFieldPredicate,
 	CompiledNamePredicate,
 	CompiledRule,
 	CompiledWhere,
+	LayerRole,
 	Me,
 	Policy,
+	PolicyLayer,
 	Specificity,
 };

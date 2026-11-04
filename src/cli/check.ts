@@ -5,7 +5,13 @@ import { parseArgs } from "node:util";
 
 import { FactsLoader } from "../gate/facts.ts";
 import { cacheEntries } from "../gate/listing-cache.ts";
-import { type CompiledConstraints, type CompiledRule, PolicyError } from "../policy/types.ts";
+import {
+	type CompiledConstraints,
+	type CompiledRule,
+	type Policy,
+	PolicyError,
+	ruleLabel,
+} from "../policy/types.ts";
 import { auditAgentFiles } from "./agent.ts";
 import { auditEnvironment, auditReferences, policyWarnings } from "./audit.ts";
 import { COMMON_OPTIONS, usageRows } from "./context.ts";
@@ -58,11 +64,11 @@ function describeActions(rule: CompiledRule): string {
 		: actions.join(", ");
 }
 
-function describeRule(rule: CompiledRule): string {
+function describeRule(policy: Policy, rule: CompiledRule): string {
 	const where = rule.raw.where === undefined ? "workspace" : JSON.stringify(rule.raw.where);
 	const shown =
 		rule.constraints === undefined ? describeActions(rule) : describeConstraints(rule.constraints);
-	return `  rules[${rule.index}] ${rule.effect.padEnd(5)} level ${rule.specificity.level}.${rule.specificity.cross}  where ${where}\n           ${shown}`;
+	return `  ${ruleLabel(policy, rule)} ${rule.effect.padEnd(5)} level ${rule.specificity.level}.${rule.specificity.cross}  where ${where}\n           ${shown}`;
 }
 
 /** A policy that names something Asana does not have is a problem `check` reports (exit 1), not a usage error. */
@@ -96,13 +102,18 @@ async function runCheck(argv: readonly string[], version: string): Promise<numbe
 	]);
 	const cache = settings.cache.enabled ? `${settings.cache.dir} (${listings} listings)` : "off";
 	console.log(`policy:     ${settings.policy ?? "?"}`);
+	for (const layer of policy.layers) {
+		if (layer.otherWorkspace === undefined && layer.file !== settings.policy) {
+			console.log(`bounded by: ${layer.file} (${layer.role} policy)`);
+		}
+	}
 	console.log(`workspace:  ${policy.workspaceName} (${policy.workspace})`);
 	console.log(`token:      ${describeUser(policy.me)} from ${context.token.source}`);
 	console.log(`cache:      ${cache}`);
 	console.log(`log:        ${context.log.file ?? "stderr only"}`);
 	console.log(`rules:      ${policy.rules.length} compiled statements`);
 	for (const rule of policy.rules) {
-		console.log(describeRule(rule));
+		console.log(describeRule(policy, rule));
 	}
 	console.log(`references: ${references.checked} objects the rules name, checked against Asana`);
 	const findings = [...policyWarnings(policy), ...references.findings, ...environment, ...agent];

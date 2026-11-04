@@ -37,25 +37,32 @@ export { createAsanaGateServer } from "./mcp/server.ts";
 export { serveHttp, serveOverStdio } from "./mcp/serve.ts";
 export type { HttpOptions, Serving } from "./mcp/serve.ts";
 export { expandActionPattern, expandActionPatterns } from "./policy/actions.ts";
-export { compilePolicy } from "./policy/compile.ts";
-export type { CustomFieldDefinition, NameResolver } from "./policy/compile.ts";
+export { compilePolicies, compilePolicy } from "./policy/compile.ts";
+export type { CustomFieldDefinition, NameResolver, PolicySource } from "./policy/compile.ts";
 export {
 	allowedActions,
 	decide,
 	explainResource,
-	fieldAllowlist,
 	isAllowed,
 	isVisible,
 	workspaceFacts,
 } from "./policy/evaluate.ts";
 export type { Branch, Decision, Explanation, Facts } from "./policy/evaluate.ts";
+export { fieldAllowlist } from "./policy/fields.ts";
 export { loadPolicyFile, parsePolicy } from "./policy/load.ts";
 export { referencesOf } from "./policy/references.ts";
 export type { Reference } from "./policy/references.ts";
 export { PolicyFileSchema, RuleSchema, WhereSchema } from "./policy/schema.ts";
 export type { PolicyFile, PolicyRule, PolicyWhere } from "./policy/schema.ts";
 export { PolicyError } from "./policy/types.ts";
-export type { CompiledRule, CompiledWhere, Me, Policy } from "./policy/types.ts";
+export type {
+	CompiledRule,
+	CompiledWhere,
+	LayerRole,
+	Me,
+	Policy,
+	PolicyLayer,
+} from "./policy/types.ts";
 export { loadSettings, SettingsError } from "./settings/load.ts";
 export type { LoadedSettings, LoadOptions } from "./settings/load.ts";
 export { findProjectDir, homeDir, managedDir } from "./settings/paths.ts";

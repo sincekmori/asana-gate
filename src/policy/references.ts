@@ -8,8 +8,9 @@ import type { CompiledWhere, Policy } from "./types.ts";
 interface Reference {
 	readonly resource: Resource;
 	readonly gid: string;
-	/** The rule's index in the policy file. */
+	/** The rule's index in its policy file, and the file's layer. */
 	readonly rule: number;
+	readonly layer: number;
 	/** The `where` member that names it (`project`, `subtree`, …). */
 	readonly member: string;
 }
@@ -42,10 +43,11 @@ function referencesOf(policy: Policy): Reference[] {
 	for (const rule of policy.rules) {
 		for (const { member, resource, of } of MEMBERS) {
 			for (const gid of of(rule.where) ?? []) {
-				references.set(`${rule.index}:${member}:${gid}`, {
+				references.set(`${rule.layer}:${rule.index}:${member}:${gid}`, {
 					resource,
 					gid,
 					rule: rule.index,
+					layer: rule.layer,
 					member,
 				});
 			}

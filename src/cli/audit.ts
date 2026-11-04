@@ -6,7 +6,7 @@ import type { FactsLoader, Loaded } from "../gate/facts.ts";
 import { messageOf } from "../log.ts";
 import { type Branch, grantedActions, isFilterRule } from "../policy/evaluate.ts";
 import { type Reference, referencesOf } from "../policy/references.ts";
-import type { CompiledRule, Policy } from "../policy/types.ts";
+import { type CompiledRule, type Policy, ruleLabel } from "../policy/types.ts";
 import { exposureOf, statIfPresent, unwritableFile } from "../system.ts";
 import type { CommandContext } from "./session.ts";
 import { tokenFileWarning } from "./token.ts";
@@ -24,7 +24,7 @@ const warning = (text: string): Finding => ({ level: "warning", text });
 
 /** The rules once each: a file rule compiles to statements that share its index and scope. */
 function fileRules(policy: Policy): CompiledRule[] {
-	return [...new Map(policy.rules.map((rule) => [rule.index, rule])).values()];
+	return [...new Map(policy.rules.map((rule) => [`${rule.layer}:${rule.index}`, rule])).values()];
 }
 
 /** Rules that say less than they seem to. */
@@ -39,20 +39,35 @@ function policyWarnings(policy: Policy): Finding[] {
 		if (isFilterRule(rule) && [...rule.actions].some((action) => verbOf(action) === "read")) {
 			findings.push(
 				warning(
-					`rules[${rule.index}] allows read through a tag/assignee/custom_field filter; filters never make objects visible, so that part has no effect`,
+					`${ruleLabel(policy, rule)} allows read through a tag/assignee/custom_field filter; filters never make objects visible, so that part has no effect`,
 				),
 			);
 		}
 	}
 	if (granted.size === 0) {
-		findings.push(warning("no rule allows anything; every request will be refused"));
+		findings.push(
+			warning(
+				policy.layers.length > 1
+					? "the policy files allow no action in common; every request will be refused"
+					: "no rule allows anything; every request will be refused",
+			),
+		);
+	}
+	for (const layer of policy.layers) {
+		if (layer.otherWorkspace !== undefined) {
+			findings.push(
+				warning(
+					`${layer.file} governs workspace "${layer.otherWorkspace}", not ${policy.workspaceName}, so it is not in force`,
+				),
+			);
+		}
 	}
 	for (const rule of fileRules(policy)) {
 		for (const predicate of rule.where.customFields ?? []) {
 			for (const value of predicate.unmatched ?? []) {
 				findings.push(
 					warning(
-						`rules[${rule.index}].where.custom_field ${predicate.fieldGid}: "${value}" is not an option of the field`,
+						`${ruleLabel(policy, rule)}.where.custom_field ${predicate.fieldGid}: "${value}" is not an option of the field`,
 					),
 				);
 			}
@@ -63,7 +78,9 @@ function policyWarnings(policy: Policy): Finding[] {
 
 /** Whether a section sits in one of the projects of the rule naming it (a rule without projects takes any). */
 function inRuleProject(policy: Policy, reference: Reference, branches: readonly Branch[]): boolean {
-	const projects = policy.rules.find((rule) => rule.index === reference.rule)?.where.projects;
+	const projects = policy.rules.find(
+		(rule) => rule.layer === reference.layer && rule.index === reference.rule,
+	)?.where.projects;
 	return (
 		projects === undefined ||
 		branches.some((branch) => branch.project !== undefined && projects.has(branch.project))
@@ -93,7 +110,8 @@ async function auditReferences(
 	);
 	const findings: Finding[] = [];
 	for (const [index, reference] of references.entries()) {
-		const at = `rules[${reference.rule}].where.${reference.member} ${reference.gid}`;
+		const rule = ruleLabel(policy, { index: reference.rule, layer: reference.layer });
+		const at = `${rule}.where.${reference.member} ${reference.gid}`;
 		const loaded = objects[index];
 		if (typeof loaded === "string") {
 			findings.push(problem(`${at}: could not be checked (${loaded})`));

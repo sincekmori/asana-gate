@@ -20,8 +20,9 @@ interface EffectiveLimit {
 
 /**
  * The constraints in force for one object: every matching rule's
- * requirements together, the most specific rule's application per member,
- * and the union of forbidden members, redactions and confirmations.
+ * requirements together, the most specific rule's application per member
+ * (the stronger layer's at equal specificity), and the union of forbidden
+ * members, redactions and confirmations, across every layer of the policy.
  */
 interface EffectiveConstraints {
 	readonly require: ReadonlyMap<Resource, ReadonlyMap<string, readonly FieldRequirement[]>>;
@@ -90,7 +91,10 @@ function matchingConstraintRules(policy: Policy, facts: Facts): ConstrainRule[] 
 				rule.constraints !== undefined &&
 				facts.branches.some((branch) => whereMatches(rule.where, branch, facts)),
 		)
-		.toSorted((a, b) => compareSpecificity(a.specificity, b.specificity) || a.index - b.index);
+		.toSorted(
+			(a, b) =>
+				compareSpecificity(a.specificity, b.specificity) || a.layer - b.layer || a.index - b.index,
+		);
 }
 
 /** Computes the constraints in force for an object. */

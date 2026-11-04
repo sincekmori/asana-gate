@@ -9,14 +9,8 @@ import { isObject, type JsonObject } from "../json.ts";
 import { messageOf } from "../log.ts";
 import { envValue, firstWhere, isFile, isMissing, readIfPresent } from "../system.ts";
 import { parseYaml, validated } from "../yaml.ts";
-import {
-	findProjectDir,
-	homeDir,
-	managedDir,
-	POLICY_FILE,
-	PROJECT_DIR,
-	resolveFrom,
-} from "./paths.ts";
+import { findProjectDir, homeDir, managedDir, PROJECT_DIR, resolveFrom } from "./paths.ts";
+import { policyCandidates } from "./policy-files.ts";
 import { type Settings, type SettingsFile, SettingsFileSchema, SettingsSchema } from "./schema.ts";
 
 /** A settings file or layer is malformed, or says something it may not. */
@@ -38,6 +32,8 @@ interface LoadedSettings {
 	/** Per dotted key (`cache.ttl`), the source that set it. */
 	readonly origins: ReadonlyMap<string, string>;
 	readonly home: string;
+	/** Where an administrator's managed settings and policy live. */
+	readonly managedDir: string;
 	/** The project directory (the one holding `.asana-gate`), when the working directory is inside one. */
 	readonly projectDir?: string;
 }
@@ -81,18 +77,6 @@ function defaults(home: string): Settings {
 		log: { ...DEFAULTS.log, file: join(home, "logs", "asana-gate.log") },
 		cache: { ...DEFAULTS.cache, dir: join(home, "cache") },
 	};
-}
-
-/** Where the policy file is looked for when no layer names one, in order. */
-function policyCandidates(
-	place: { readonly home: string; readonly projectDir?: string | undefined },
-	cwd: string,
-): string[] {
-	return [
-		...(place.projectDir === undefined ? [] : [join(place.projectDir, PROJECT_DIR, POLICY_FILE)]),
-		join(cwd, "asana-gate.yaml"),
-		join(place.home, POLICY_FILE),
-	];
 }
 
 /** One layer's values validated, with its paths made absolute against `base` (the directory of the file naming them). */
@@ -219,6 +203,7 @@ function assertPersonal(layer: SettingsLayer): void {
 async function loadSettings(options: LoadOptions): Promise<LoadedSettings> {
 	const { cwd, env } = options;
 	const home = options.home ?? homeDir(env);
+	const managedPlace = options.managedDir ?? managedDir(env);
 	const projectDir = await findProjectDir(cwd, home);
 	const projectFiles =
 		projectDir === undefined
@@ -226,7 +211,7 @@ async function loadSettings(options: LoadOptions): Promise<LoadedSettings> {
 			: ["settings.yaml", "settings.local.yaml"].map((name) => join(projectDir, PROJECT_DIR, name));
 	const [user, managed, ...project] = await Promise.all([
 		readLayer(join(home, "settings.yaml")),
-		managedLayers(options.managedDir ?? managedDir(env)),
+		managedLayers(managedPlace),
 		...projectFiles.map((file) => readLayer(file)),
 	]);
 	const projectLayers = project.filter((layer) => layer !== undefined);
@@ -249,8 +234,9 @@ async function loadSettings(options: LoadOptions): Promise<LoadedSettings> {
 		mergeLayer(merged, { source: layer.source, values: layer.values, prefix: "" }, origins);
 	}
 	if (merged.policy === undefined) {
-		const found = await firstWhere(policyCandidates({ home, projectDir }, cwd), (file) =>
-			isFile(file),
+		const found = await firstWhere(
+			policyCandidates({ home, managedDir: managedPlace, projectDir }, cwd),
+			(file) => isFile(file),
 		);
 		if (found !== undefined) {
 			merged.policy = found;
@@ -261,9 +247,10 @@ async function loadSettings(options: LoadOptions): Promise<LoadedSettings> {
 		settings: validated(SettingsSchema, merged, { source: "settings", fail }),
 		origins,
 		home,
+		managedDir: managedPlace,
 		...(projectDir !== undefined && { projectDir }),
 	};
 }
 
-export { DEFAULTS, loadSettings, policyCandidates, SettingsError };
+export { DEFAULTS, loadSettings, SettingsError };
 export type { LoadedSettings, LoadOptions };

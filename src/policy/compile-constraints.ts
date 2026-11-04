@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { requestMembers, responseMembers } from "../catalog/members.ts";
-import { type Action, isResource, type Resource } from "../catalog/resources.ts";
+import {
+	type Action,
+	actionOf,
+	FIELD_VERBS,
+	isResource,
+	type Resource,
+	RESOURCE_VERBS,
+} from "../catalog/resources.ts";
 import { isObject } from "../json.ts";
 import { expandActionPatterns } from "./actions.ts";
 import {
@@ -169,4 +176,34 @@ async function compileConstraints(
 	};
 }
 
-export { assertRequestMember, compileConstraints };
+/** The `fields` allowlist of an allow rule, which also grants the update verbs the members stand for. */
+function compileFields(
+	fields: PolicyRule["fields"],
+	allowed: Set<Action>,
+	index: number,
+): ReadonlyMap<Resource, ReadonlySet<string>> | undefined {
+	if (fields === undefined) {
+		return undefined;
+	}
+	const map = new Map<Resource, ReadonlySet<string>>();
+	for (const [resource, names] of Object.entries(fields)) {
+		if (!isResource(resource)) {
+			throw new PolicyError(`rules[${index}].fields: unknown resource "${resource}"`);
+		}
+		if (!(RESOURCE_VERBS[resource] as readonly string[]).includes("update")) {
+			throw new PolicyError(`rules[${index}].fields: ${resource} has no update verb`);
+		}
+		allowed.add(actionOf(resource, "update"));
+		for (const name of names) {
+			assertRequestMember(resource, name, `rules[${index}].fields`);
+			const verb = FIELD_VERBS[resource]?.[name];
+			if (verb !== undefined) {
+				allowed.add(actionOf(resource, verb));
+			}
+		}
+		map.set(resource, new Set(names));
+	}
+	return map;
+}
+
+export { assertRequestMember, compileConstraints, compileFields };

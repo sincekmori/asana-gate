@@ -7,8 +7,14 @@ import { isResource, type Resource } from "../catalog/resources.ts";
 import { FactsLoader, type Loaded } from "../gate/facts.ts";
 import { stringOf } from "../gate/objects.ts";
 import { constraintsFor, labelOf } from "../policy/effective.ts";
-import { type Branch, explainResource } from "../policy/evaluate.ts";
-import type { Policy } from "../policy/types.ts";
+import {
+	type Branch,
+	decide,
+	type Decision,
+	explainResource,
+	type Facts,
+} from "../policy/evaluate.ts";
+import { type Policy, ruleLabel } from "../policy/types.ts";
 import { COMMON_OPTIONS, UsageError, usageRows } from "./context.ts";
 import { loadPolicy } from "./policy.ts";
 import { createContext } from "./session.ts";
@@ -82,10 +88,10 @@ function printConstraints(policy: Policy, loaded: Loaded): void {
 		lines.push(`  redact  ${[...redact].join(", ")}`);
 	}
 	for (const { rule, action, limit } of [...effective.limits.values()].flat()) {
-		lines.push(`  limit   ${action}: ${limit.max} per ${limit.per} (rules[${rule.index}])`);
+		lines.push(`  limit   ${action}: ${limit.max} per ${limit.per} (${ruleLabel(policy, rule)})`);
 	}
 	for (const [action, rules] of effective.confirm) {
-		lines.push(`  confirm ${action} (rules[${rules.map((r) => r.index).join(", ")}])`);
+		lines.push(`  confirm ${action} (${rules.map((r) => ruleLabel(policy, r)).join(", ")})`);
 	}
 	if (lines.length > 0) {
 		console.log("constraints:");
@@ -93,6 +99,35 @@ function printConstraints(policy: Policy, loaded: Loaded): void {
 			console.log(line);
 		}
 	}
+}
+
+/** One file of the policy on its own, so its decision can be told from the others'. */
+function fileView(policy: Policy, index: number): Policy {
+	return { ...policy, layers: [], rules: policy.rules.filter((rule) => rule.layer === index) };
+}
+
+/** The rules that decided an action in one view of the policy, or the default. */
+function decidedBy(view: Policy, facts: Facts, action: Decision["action"]): string {
+	const winners = decide(view, facts, action).branches.flatMap((b) =>
+		b.winners.map((r) => `${ruleLabel(view, r)} ${r.effect}`),
+	);
+	return winners.length === 0
+		? "no rule mentions it (default deny)"
+		: [...new Set(winners)].join(", ");
+}
+
+/** Why an action is allowed or denied: per file when the policy has several, since every file must allow it. */
+function reasonOf(policy: Policy, facts: Facts, action: Decision["action"]): string {
+	if (policy.layers.length <= 1) {
+		return decidedBy(policy, facts, action);
+	}
+	return policy.layers
+		.flatMap((layer, index) =>
+			layer.otherWorkspace === undefined
+				? [`${layer.role}: ${decidedBy(fileView(policy, index), facts, action)}`]
+				: [],
+		)
+		.join("; ");
 }
 
 function printExplanation(policy: Policy, loaded: Loaded): void {
@@ -120,14 +155,9 @@ function printExplanation(policy: Policy, loaded: Loaded): void {
 	console.log(explanation.visible ? "visible:   yes" : "visible:   NO (requests return 404)");
 	for (const decision of explanation.actions) {
 		const verdict = decision.allowed ? "allow" : "deny ";
-		const winners = decision.branches.flatMap((b) =>
-			b.winners.map((r) => `rules[${r.index}] ${r.effect}`),
+		console.log(
+			`  ${verdict} ${decision.action.padEnd(28)} ${reasonOf(policy, facts, decision.action)}`,
 		);
-		const reason =
-			winners.length === 0
-				? "no rule mentions it (default deny)"
-				: [...new Set(winners)].join(", ");
-		console.log(`  ${verdict} ${decision.action.padEnd(28)} ${reason}`);
 	}
 	printConstraints(policy, loaded);
 }
