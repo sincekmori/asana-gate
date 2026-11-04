@@ -11,6 +11,11 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The job runs in the `release` environment and the npm trusted publisher
+    # names it: with the environment in the OIDC subject, npm matches the
+    # publisher for a repository created after 2026-07-15 (immutable subject
+    # claims), which it does not without one (npm/cli#9969).
+    environment: release
     permissions:
       contents: write # create the Version Packages PR / tags
       pull-requests: write # open the Version Packages PR
