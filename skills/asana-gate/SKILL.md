@@ -6,7 +6,7 @@ description: >-
   Also applies when the user mentions allowed_actions, an Asana policy, the gate, or an MCP server for Asana without naming asana-gate.
 license: Apache-2.0
 metadata:
-  version: "0.0.0"
+  version: "0.1.0"
 ---
 
 # asana-gate
