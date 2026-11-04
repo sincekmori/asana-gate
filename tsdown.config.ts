@@ -7,7 +7,6 @@ export default defineConfig([
 		format: ["esm", "cjs"],
 		dts: true,
 		clean: true,
-		sourcemap: true,
 		treeshake: true,
 		exports: {
 			legacy: true,
@@ -30,7 +29,6 @@ export default defineConfig([
 		format: ["esm"],
 		dts: false,
 		clean: false,
-		sourcemap: true,
 		treeshake: true,
 	},
 ]);
