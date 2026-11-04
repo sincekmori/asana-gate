@@ -1,0 +1,6 @@
+{
+  "editor.rulers": [100],
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "file",
+  "editor.defaultFormatter": "oxc.oxc-vscode"
+}

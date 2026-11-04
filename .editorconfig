@@ -1,0 +1,13 @@
+root = true
+
+[*]
+indent_style = tab
+indent_size = 2
+
+[*.{json,jsonc,yml,yaml}]
+indent_style = space
+
+# Markdown (and its embedded code blocks) uses spaces so JSON/code snippets
+# render consistently on GitHub.
+[*.{md,mdx}]
+indent_style = space

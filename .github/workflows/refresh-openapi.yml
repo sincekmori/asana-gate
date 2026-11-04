@@ -1,0 +1,105 @@
+name: Refresh Asana OpenAPI snapshots
+
+# Weekly refresh of the structural snapshots of Asana's public OpenAPI
+# definition (src/catalog/operations.gen.ts and src/catalog/schemas.gen.ts).
+# The snapshots hold no wording — only operations, parameters, body members,
+# deprecation flags and response fields — so they change only when the API
+# itself changes. When they do, this opens a PR whose description reports what
+# changed and what asana-gate must do about it (scripts/openapi-report.ts).
+# CI on the PR fails until every new operation is classified in
+# src/catalog/classification.ts and every field the gate reads still exists
+# (a plain read, update or delete of one object is classified from its path,
+# and the report lists it with its action to confirm), so an API Asana adds or
+# changes can never pass through asana-gate unreviewed.
+# Note: PRs opened with GITHUB_TOKEN don't trigger the CI workflow (same
+# limitation as the changesets Version Packages PR) — CI runs once more on
+# merge to main.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Mondays 03:00 UTC (12:00 JST)
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the refresh branch
+  pull-requests: write # open the refresh PR
+
+concurrency:
+  group: refresh-openapi-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 12 # the newest 12.x; locally any pnpm that satisfies engines.pnpm runs as it is
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Regenerate the snapshots
+        env:
+          # Authenticates the upstream-commit lookup (60 unauthenticated calls an hour are shared per runner IP).
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pnpm sync-openapi && pnpm format
+
+      - name: Detect changes
+        id: diff
+        run: |
+          # The upstream-commit header moves with every commit to the spec; only structure counts.
+          if git diff --quiet -I '^// Upstream commit:' -- src/catalog/operations.gen.ts src/catalog/schemas.gen.ts; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report what changed
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          {
+            echo "Weekly automated refresh of the Asana OpenAPI snapshots from https://github.com/Asana/openapi."
+            echo
+            node scripts/openapi-report.ts
+            echo
+            echo "If CI fails, follow the *Action required* list above before merging; the included changeset ships the refreshed catalog as a patch release."
+          } > /tmp/openapi-report.md
+          cat /tmp/openapi-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the refresh PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="chore/refresh-asana-openapi"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          # Fixed changeset filename: repeated refreshes before a release fold
+          # into the one pending changeset instead of stacking new ones.
+          cat > .changeset/refresh-asana-openapi.md <<'EOF'
+          ---
+          "asana-gate": patch
+          ---
+
+          chore: refresh the Asana OpenAPI snapshots
+          EOF
+          git add src/catalog/operations.gen.ts src/catalog/schemas.gen.ts .changeset/refresh-asana-openapi.md
+          git commit -m "chore: refresh the Asana OpenAPI snapshots"
+          git push -fu origin "$branch"
+          if [ "$(gh pr list --head "$branch" --state open --json number --jq length)" = "0" ]; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore: refresh the Asana OpenAPI snapshots" \
+              --body-file /tmp/openapi-report.md
+          else
+            gh pr edit "$branch" --body-file /tmp/openapi-report.md
+          fi

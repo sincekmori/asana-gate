@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: diagnose-hidden-task
+expected_outcome: |
+  The answer explains that asana-gate answers for hidden objects with the same 404 Asana gives for nonexistent gids, points at the deny rule on Payroll (and the absence of a read grant there), proposes a concrete rule granting read only in project 1200000000000999, and names asana-gate explain as the way to confirm.

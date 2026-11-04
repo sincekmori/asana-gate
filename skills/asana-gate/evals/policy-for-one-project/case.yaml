@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: policy-for-one-project
+expected_outcome: |
+  A valid asana-gate policy is saved at .asana-gate/policy.yaml: version 1, the workspace gid, a workspace-wide read rule, a project rule allowing task work and comments, a Done-section deny rule, a constraint rule applying the '[bot] ' prefix, requiring due_on and confirming task:delete; and the answer names asana-gate check as the way to validate it.

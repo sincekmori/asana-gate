@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # npm dependencies, grouped into a single weekly PR to keep noise low.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Only propose versions at least a day old, matching pnpm's default
+    # `minimumReleaseAge`. Note: security updates ignore the cooldown by design.
+    cooldown:
+      default-days: 1
+    groups:
+      npm:
+        patterns: ["*"]
+
+  # GitHub Actions used by the CI / release workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

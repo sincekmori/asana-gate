@@ -1,0 +1,91 @@
+{
+  "name": "asana-gate",
+  "version": "0.0.0",
+  "description": "Declarative access-control policy in front of the Asana API, served to AI agents over MCP.",
+  "keywords": [
+    "access-control",
+    "agent",
+    "asana",
+    "gateway",
+    "mcp",
+    "model-context-protocol",
+    "policy"
+  ],
+  "homepage": "https://github.com/sincekmori/asana-gate#readme",
+  "bugs": {
+    "url": "https://github.com/sincekmori/asana-gate/issues"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sincekmori/asana-gate.git"
+  },
+  "bin": {
+    "asana-gate": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "schema.json",
+    "settings.schema.json",
+    "skills/asana-gate/SKILL.md",
+    "skills/asana-gate/references"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json",
+    "./schema.json": "./schema.json",
+    "./settings.schema.json": "./settings.schema.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint --type-aware",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "generate-schema": "node scripts/generate-schema.ts",
+    "sync-openapi": "node scripts/sync-openapi.ts",
+    "docs-updates": "node scripts/docs-updates.ts",
+    "changeset": "changeset",
+    "version": "changeset version && pnpm generate-skill",
+    "release": "changeset publish",
+    "generate-skill": "node scripts/generate-skill.ts",
+    "check:skill": "skills-ref validate skills/asana-gate"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@changesets/cli": "^3.0.3",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^26.6.6",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2004",
+    "publint": "^0.3.25",
+    "skills-ref": "^0.1.5",
+    "tsdown": "^0.23.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=12"
+  }
+}

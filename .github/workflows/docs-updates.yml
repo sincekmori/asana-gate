@@ -1,0 +1,69 @@
+name: Check Asana docs updates
+
+# Weekly list of the pages of developers.asana.com updated in the last week,
+# read from the `updatedAt` front matter of the Markdown source each page
+# serves (<page>.md, listed by llms.txt). The OpenAPI definition carries no
+# wording, so an early-access endpoint's opt-in flag, a deprecation the
+# definition does not mark or an access restriction appears only on those
+# pages. The window equals the schedule's interval, so every update is listed
+# once: in the run summary and, when the list is not empty, as a comment on
+# the issue "Asana docs updates" (created when missing). Nothing is committed.
+
+on:
+  schedule:
+    - cron: "30 3 * * 1" # weekly, Mondays 03:30 UTC (after the OpenAPI refresh); DAYS below matches
+  workflow_dispatch:
+    inputs:
+      days:
+        description: How many days back to look (the schedule looks back one week)
+        default: "7"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: docs-updates-${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  DAYS: ${{ inputs.days || 7 }} # the schedule's interval, in days
+
+jobs:
+  updates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 12 # the newest 12.x; locally any pnpm that satisfies engines.pnpm runs as it is
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: List the pages updated in the window
+        run: node scripts/docs-updates.ts --days "$DAYS" > /tmp/updates.md
+
+      - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: Asana docs updates
+        run: |
+          if [ ! -s /tmp/updates.md ]; then
+            echo "No page of developers.asana.com was updated in the last $DAYS days." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat /tmp/updates.md >> "$GITHUB_STEP_SUMMARY"
+          number="$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")"
+          if [ -z "$number" ]; then
+            number="$(gh issue create --title "$TITLE" \
+              --body "The pages of developers.asana.com updated each week, listed by the docs-updates workflow; one comment per week." \
+              | grep -oE '[0-9]+$')"
+          fi
+          gh issue comment "$number" --body-file /tmp/updates.md

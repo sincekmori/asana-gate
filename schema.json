@@ -1,0 +1,823 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "workspace": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The one workspace this policy governs (gid or name)"
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "where": {
+            "description": "The scope this rule applies to; omit for the whole workspace",
+            "type": "object",
+            "properties": {
+              "team": {
+                "description": "Team(s): the team itself and every project in it",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A gid or a name"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "A gid or a name"
+                    }
+                  }
+                ]
+              },
+              "portfolio": {
+                "description": "Portfolio(s): the portfolio itself and every project in it, including nested portfolios",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A gid or a name"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "A gid or a name"
+                    }
+                  }
+                ]
+              },
+              "project": {
+                "description": "Project(s): the project and everything inside it",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A gid or a name"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "A gid or a name"
+                    }
+                  }
+                ]
+              },
+              "section": {
+                "description": "Section(s) of the project(s) given by `project` (a section name needs `project`)",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A gid or a name"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "A gid or a name"
+                    }
+                  }
+                ]
+              },
+              "task": {
+                "description": "Task gid(s): exactly these tasks",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d+$"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^\\d+$"
+                    }
+                  }
+                ]
+              },
+              "subtree": {
+                "description": "Task gid(s): these tasks and all of their subtasks",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^\\d+$"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^\\d+$"
+                    }
+                  }
+                ]
+              },
+              "unhomed": {
+                "description": "Tasks that belong to no project",
+                "type": "boolean",
+                "const": true
+              },
+              "tag": {
+                "description": "Cross-cutting filter: tasks carrying any of these tags",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A gid or a name"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "A gid or a name"
+                    }
+                  }
+                ]
+              },
+              "assignee": {
+                "description": "Cross-cutting filter: tasks assigned to any of these users (\"me\", a gid or an email)",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A gid or a name"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "A gid or a name"
+                    }
+                  }
+                ]
+              },
+              "custom_field": {
+                "description": "Cross-cutting filter: tasks whose custom field (by name or gid) has any of the given values",
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": ["string", "number", "boolean"]
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": ["string", "number", "boolean"]
+                      }
+                    }
+                  ]
+                }
+              },
+              "created_by": {
+                "description": "State filter: tasks created by any of these users (\"me\", a gid or an email)",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "A gid or a name"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "A gid or a name"
+                    }
+                  }
+                ]
+              },
+              "completed": {
+                "description": "State filter: whether the task is completed",
+                "type": "boolean"
+              },
+              "has_parent": {
+                "description": "State filter: whether the task is a subtask",
+                "type": "boolean"
+              },
+              "name": {
+                "description": "State filter: the object's name",
+                "type": "object",
+                "properties": {
+                  "prefix": {
+                    "type": "string"
+                  },
+                  "suffix": {
+                    "type": "string"
+                  },
+                  "contains": {
+                    "type": "string"
+                  },
+                  "matches": {
+                    "description": "A regular expression",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "overdue": {
+                "description": "State filter: whether the task's due date has passed",
+                "type": "boolean"
+              },
+              "due_within": {
+                "description": "State filter: tasks due within this duration from now",
+                "type": "string",
+                "pattern": "^(?<amount>\\d+)(?<unit>ms|s|m|h|d|w)$"
+              },
+              "created_within": {
+                "description": "State filter: tasks created within this duration",
+                "type": "string",
+                "pattern": "^(?<amount>\\d+)(?<unit>ms|s|m|h|d|w)$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "allow": {
+            "description": "Actions to allow in this scope",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "deny": {
+            "description": "Actions to deny in this scope",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "fields": {
+            "description": "Per resource, the only fields an `update` may touch in this scope (applies to the rule's `allow` of `<resource>:update`)",
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "require": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "custom_fields": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "present": {
+                              "description": "Required on create; cannot be cleared on update",
+                              "type": "boolean"
+                            },
+                            "prefix": {
+                              "type": "string"
+                            },
+                            "suffix": {
+                              "type": "string"
+                            },
+                            "contains": {
+                              "type": "string"
+                            },
+                            "matches": {
+                              "description": "A regular expression the value must match",
+                              "type": "string"
+                            },
+                            "not_matches": {
+                              "description": "A regular expression the value must not match",
+                              "type": "string"
+                            },
+                            "in": {
+                              "description": "Allowed values (gids or names for references)",
+                              "type": "array",
+                              "items": {
+                                "type": ["string", "number", "boolean"]
+                              }
+                            },
+                            "not_in": {
+                              "type": "array",
+                              "items": {
+                                "type": ["string", "number", "boolean"]
+                              }
+                            },
+                            "min_length": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "max_length": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "min": {
+                              "description": "A number, or a date: YYYY-MM-DD, ISO 8601, today, now, +7d, -1d",
+                              "type": ["number", "string"]
+                            },
+                            "max": {
+                              "description": "A number, or a date: YYYY-MM-DD, ISO 8601, today, now, +7d, -1d",
+                              "type": ["number", "string"]
+                            }
+                          },
+                          "additionalProperties": false,
+                          "description": "What a request member must satisfy"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "present": {
+                                "description": "Required on create; cannot be cleared on update",
+                                "type": "boolean"
+                              },
+                              "prefix": {
+                                "type": "string"
+                              },
+                              "suffix": {
+                                "type": "string"
+                              },
+                              "contains": {
+                                "type": "string"
+                              },
+                              "matches": {
+                                "description": "A regular expression the value must match",
+                                "type": "string"
+                              },
+                              "not_matches": {
+                                "description": "A regular expression the value must not match",
+                                "type": "string"
+                              },
+                              "in": {
+                                "description": "Allowed values (gids or names for references)",
+                                "type": "array",
+                                "items": {
+                                  "type": ["string", "number", "boolean"]
+                                }
+                              },
+                              "not_in": {
+                                "type": "array",
+                                "items": {
+                                  "type": ["string", "number", "boolean"]
+                                }
+                              },
+                              "min_length": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "max_length": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "min": {
+                                "description": "A number, or a date: YYYY-MM-DD, ISO 8601, today, now, +7d, -1d",
+                                "type": ["number", "string"]
+                              },
+                              "max": {
+                                "description": "A number, or a date: YYYY-MM-DD, ISO 8601, today, now, +7d, -1d",
+                                "type": ["number", "string"]
+                              }
+                            },
+                            "additionalProperties": false,
+                            "description": "What a request member must satisfy"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "present": {
+                        "description": "Required on create; cannot be cleared on update",
+                        "type": "boolean"
+                      },
+                      "prefix": {
+                        "type": "string"
+                      },
+                      "suffix": {
+                        "type": "string"
+                      },
+                      "contains": {
+                        "type": "string"
+                      },
+                      "matches": {
+                        "description": "A regular expression the value must match",
+                        "type": "string"
+                      },
+                      "not_matches": {
+                        "description": "A regular expression the value must not match",
+                        "type": "string"
+                      },
+                      "in": {
+                        "description": "Allowed values (gids or names for references)",
+                        "type": "array",
+                        "items": {
+                          "type": ["string", "number", "boolean"]
+                        }
+                      },
+                      "not_in": {
+                        "type": "array",
+                        "items": {
+                          "type": ["string", "number", "boolean"]
+                        }
+                      },
+                      "min_length": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "max_length": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "min": {
+                        "description": "A number, or a date: YYYY-MM-DD, ISO 8601, today, now, +7d, -1d",
+                        "type": ["number", "string"]
+                      },
+                      "max": {
+                        "description": "A number, or a date: YYYY-MM-DD, ISO 8601, today, now, +7d, -1d",
+                        "type": ["number", "string"]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "What a request member must satisfy"
+                  }
+                ]
+              }
+            },
+            "description": "Per resource and request member, what create and update requests must satisfy (`true` means present); `custom_fields` nests by field name"
+          },
+          "apply": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "custom_fields": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": ["string", "number", "boolean"]
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": ["string", "number", "boolean"]
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "default": {
+                              "description": "Set when the member is absent or empty",
+                              "anyOf": [
+                                {
+                                  "type": ["string", "number", "boolean"]
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": ["string", "number", "boolean"]
+                                  }
+                                }
+                              ]
+                            },
+                            "value": {
+                              "description": "Always set, whatever the request says",
+                              "anyOf": [
+                                {
+                                  "type": ["string", "number", "boolean"]
+                                },
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": ["string", "number", "boolean"]
+                                  }
+                                }
+                              ]
+                            },
+                            "prefix": {
+                              "description": "Prepended unless already present",
+                              "type": "string"
+                            },
+                            "suffix": {
+                              "description": "Appended unless already present",
+                              "type": "string"
+                            },
+                            "add": {
+                              "description": "Values a list member must contain",
+                              "type": "array",
+                              "items": {
+                                "type": ["string", "number", "boolean"]
+                              }
+                            }
+                          },
+                          "additionalProperties": false,
+                          "description": "How a request member is completed or rewritten"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "type": ["string", "number", "boolean"]
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": ["string", "number", "boolean"]
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "default": {
+                                "description": "Set when the member is absent or empty",
+                                "anyOf": [
+                                  {
+                                    "type": ["string", "number", "boolean"]
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": ["string", "number", "boolean"]
+                                    }
+                                  }
+                                ]
+                              },
+                              "value": {
+                                "description": "Always set, whatever the request says",
+                                "anyOf": [
+                                  {
+                                    "type": ["string", "number", "boolean"]
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": ["string", "number", "boolean"]
+                                    }
+                                  }
+                                ]
+                              },
+                              "prefix": {
+                                "description": "Prepended unless already present",
+                                "type": "string"
+                              },
+                              "suffix": {
+                                "description": "Appended unless already present",
+                                "type": "string"
+                              },
+                              "add": {
+                                "description": "Values a list member must contain",
+                                "type": "array",
+                                "items": {
+                                  "type": ["string", "number", "boolean"]
+                                }
+                              }
+                            },
+                            "additionalProperties": false,
+                            "description": "How a request member is completed or rewritten"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": ["string", "number", "boolean"]
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": ["string", "number", "boolean"]
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "default": {
+                        "description": "Set when the member is absent or empty",
+                        "anyOf": [
+                          {
+                            "type": ["string", "number", "boolean"]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": ["string", "number", "boolean"]
+                            }
+                          }
+                        ]
+                      },
+                      "value": {
+                        "description": "Always set, whatever the request says",
+                        "anyOf": [
+                          {
+                            "type": ["string", "number", "boolean"]
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": ["string", "number", "boolean"]
+                            }
+                          }
+                        ]
+                      },
+                      "prefix": {
+                        "description": "Prepended unless already present",
+                        "type": "string"
+                      },
+                      "suffix": {
+                        "description": "Appended unless already present",
+                        "type": "string"
+                      },
+                      "add": {
+                        "description": "Values a list member must contain",
+                        "type": "array",
+                        "items": {
+                          "type": ["string", "number", "boolean"]
+                        }
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "How a request member is completed or rewritten"
+                  }
+                ]
+              }
+            },
+            "description": "Per resource and request member, how create and update requests are completed (a bare value is a default); `custom_fields` nests by field name"
+          },
+          "forbid": {
+            "description": "Per resource, request members that may not be set",
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "redact": {
+            "description": "Per resource, members removed from responses",
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "limit": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "max": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "per": {
+                  "type": "string",
+                  "pattern": "^(?<amount>\\d+)(?<unit>ms|s|m|h|d|w)$",
+                  "description": "A duration: a number followed by ms, s, m, h, d or w"
+                }
+              },
+              "required": ["max", "per"],
+              "additionalProperties": false
+            },
+            "description": "Per action, how many requests this scope allows per period"
+          },
+          "confirm": {
+            "description": "Actions that need a person's confirmation in this scope (via MCP elicitation or a CLI prompt)",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "The rules; order does not matter (specificity does)"
+    }
+  },
+  "required": ["version", "workspace", "rules"],
+  "additionalProperties": false,
+  "$id": "https://raw.githubusercontent.com/sincekmori/asana-gate/main/schema.json",
+  "title": "asana-gate policy",
+  "description": "An asana-gate policy: the one workspace it governs and the ordered rules that allow or deny actions in scopes."
+}

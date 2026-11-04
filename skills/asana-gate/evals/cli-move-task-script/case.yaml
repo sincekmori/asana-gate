@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: cli-move-task-script
+expected_outcome: |
+  Exact asana-gate commands: task list with --project 1200000000000123 --assignee me (open tasks only) --json; task move 1200000000000456 --section 1200000000000789 --yes; task update 1200000000000456 --name 'fix login', which the gate refuses with a 400 'does not satisfy the policy' because the required '[bot] ' prefix is missing (no apply adds it), so the name should be '[bot] fix login'.

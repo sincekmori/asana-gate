@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the Version Packages PR / tags
+      pull-requests: write # open the Version Packages PR
+      id-token: write # OIDC trusted publishing to npm (no NPM_TOKEN)
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 12 # the newest 12.x; locally any pnpm that satisfies engines.pnpm runs as it is
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      # OIDC trusted publishing requires npm >= 11.5.1; install it explicitly
+      # instead of relying on whichever npm the runner's Node ships with.
+      - name: Update npm for OIDC trusted publishing
+        run: npm install -g npm@11
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build (incl. publint + attw)
+        run: pnpm build
+
+      # Must stay on the action major that matches @changesets/cli: the action
+      # decides what was published by reading the publish script's output, and
+      # v1 only understands the CLI 2 wording. Paired with CLI 3 it sees no
+      # published package and silently skips the tags and the GitHub releases.
+      # The action publishes no moving major tag (no `v2`), so the exact tag is
+      # pinned and Dependabot moves it.
+      - name: Create Version PR or publish to npm
+        uses: changesets/action@v2.1.2
+        with:
+          version-script: pnpm run version
+          publish-script: pnpm run release
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
+          # v2 reads the token from this input only — a GITHUB_TOKEN env var is
+          # not a substitute.
+          github-token: ${{ secrets.GITHUB_TOKEN }}

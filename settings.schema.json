@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "policy": {
+      "description": "The policy file, relative to this settings file",
+      "type": "string"
+    },
+    "token": {
+      "type": "object",
+      "properties": {
+        "env": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The environment variable holding the Personal Access Token"
+        },
+        "command": {
+          "description": "A command whose standard output is the token (a secret manager's CLI, for example); honored from user and managed settings only",
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "description": "A file holding the token on its first line; relative to the settings file. Without it, the project's .asana-gate/token and then ~/.asana-gate/token are tried",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["silent", "error", "warn", "info", "debug"]
+        },
+        "file": {
+          "description": "A file log lines are appended to besides stderr, relative to the settings file (default: ~/.asana-gate/logs/asana-gate.log); null for none",
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "cache": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether the names and gids of the workspace's structure are cached on disk between runs"
+        },
+        "dir": {
+          "type": "string",
+          "description": "Where the cache lives; relative to the settings file"
+        },
+        "ttl": {
+          "type": "string",
+          "pattern": "^(?<amount>\\d+)(?<unit>ms|s|m|h|d|w)$",
+          "description": "How long a cached listing is trusted before it is read again"
+        }
+      },
+      "additionalProperties": false
+    },
+    "concurrency": {
+      "type": "object",
+      "properties": {
+        "reads": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Concurrent GET requests (Asana allows 50)"
+        },
+        "writes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 15,
+          "description": "Concurrent POST, PUT and DELETE requests (Asana allows 15)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "retries": {
+      "type": "object",
+      "properties": {
+        "max": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Retries after a 429, or after a 5xx for anything but a POST"
+        },
+        "maxWait": {
+          "type": "string",
+          "pattern": "^(?<amount>\\d+)(?<unit>ms|s|m|h|d|w)$",
+          "description": "The longest wait before a retry; a longer Retry-After is cut to it"
+        }
+      },
+      "additionalProperties": false
+    },
+    "asana": {
+      "type": "object",
+      "properties": {
+        "enable": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "description": "Flags sent in the Asana-Enable header of every request: an early-access opt-in such as ai_teammate_actors (the Agents endpoints), or an announced change taken before its date"
+        },
+        "disable": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "description": "Flags sent in the Asana-Disable header of every request: an announced change kept off while Asana still allows it"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcp": {
+      "type": "object",
+      "properties": {
+        "transport": {
+          "type": "string",
+          "enum": ["stdio", "http"]
+        },
+        "host": {
+          "type": "string",
+          "description": "The HTTP bind address"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "allowedHosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra host names accepted in Host and Origin headers"
+        },
+        "authTokenEnv": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The environment variable with the bearer token HTTP clients must present"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$id": "https://raw.githubusercontent.com/sincekmori/asana-gate/main/settings.schema.json",
+  "title": "asana-gate settings",
+  "description": "One layer of asana-gate settings (user, project, project-local or managed); every member is optional and layers are merged."
+}
