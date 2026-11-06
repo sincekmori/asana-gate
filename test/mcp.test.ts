@@ -6,6 +6,14 @@ import { describe, expect, it } from "vitest";
 import { TOOLS } from "../src/mcp/tools.ts";
 import { callTool as call, connectMcp as setup } from "./helpers/mcp.ts";
 
+/** The instructions a client gets from a server under `policy` (the helper's default when absent). */
+async function instructionsUnder(policy?: string): Promise<string> {
+	const { client, close } = await setup(policy);
+	const instructions = client.getInstructions() ?? "";
+	await close();
+	return instructions;
+}
+
 describe("mcp server", () => {
 	it("lists the curated tools the policy could allow, in their order, then the generic ones", async () => {
 		const { client, close } = await setup();
@@ -118,5 +126,19 @@ describe("mcp server", () => {
 		});
 		await close();
 		expect(invisible.isError).toBe(true);
+	});
+
+	it("tells the agent whom it acts as, showing the user's name and email as the policy would", async () => {
+		const scoped = `version: 1\nworkspace: "1"\nrules:\n  - allow: [workspace:read]\n  - where: { project: "21" }\n    allow: [read]\n`;
+		const workspace = 'in the workspace "Acme" (gid 1)';
+		await expect(instructionsUnder()).resolves.toContain(
+			`the access token belongs to ("Me", me@acme.test, gid 51), ${workspace}`,
+		);
+		await expect(instructionsUnder(scoped)).resolves.toContain(
+			`the access token belongs to (gid 51), ${workspace}`,
+		);
+		await expect(
+			instructionsUnder(`${scoped}  - allow: [user:read]\n    redact: { user: [email] }\n`),
+		).resolves.toContain(`the access token belongs to ("Me", gid 51), ${workspace}`);
 	});
 });

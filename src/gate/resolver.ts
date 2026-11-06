@@ -5,7 +5,7 @@ import type { AsanaClient } from "../asana/client.ts";
 import { isAbsent } from "../asana/errors.ts";
 import type { QueryValue } from "../asana/query.ts";
 import type { CustomFieldDefinition, NameResolver } from "../policy/compile.ts";
-import { isGid } from "../policy/schema.ts";
+import { isGid, matches } from "../policy/schema.ts";
 import { type Me, PolicyError } from "../policy/types.ts";
 import type { ListingCache } from "./listing-cache.ts";
 import { type AsanaObject, refsOf, stringOf } from "./objects.ts";
@@ -48,12 +48,6 @@ function named(item: AsanaObject): Named | undefined {
 	const gid = stringOf(item.gid);
 	const name = stringOf(item.name);
 	return gid === undefined || name === undefined ? undefined : { gid, name };
-}
-
-/** Whether a named item is `ref`: by gid when `ref` is one, else by name. */
-function matches(ref: string): (item: Named) => boolean {
-	const byGid = isGid(ref);
-	return (item) => (byGid ? item.gid === ref : item.name === ref);
 }
 
 /** The key a listing is cached under: its path and query. */
@@ -292,5 +286,6 @@ class AsanaNameResolver implements NameResolver {
 	}
 }
 
-export { AsanaNameResolver, collect, matches, named };
+export { AsanaNameResolver, collect, named };
+export { matches } from "../policy/schema.ts";
 export type { ListSource, Named, ResolverOptions };

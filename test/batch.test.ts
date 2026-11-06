@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
+import { joinedResults } from "../src/asana/batch.ts";
 import type { PendingConfirmation } from "../src/gate/errors.ts";
 import { type Body, message, setupGate } from "./helpers/gate.ts";
 
@@ -32,6 +33,9 @@ const create = (name: string): Body => ({
 	relative_path: "/tasks",
 	data: { name, projects: ["21"] },
 });
+
+/** A batch result Asana answers for an action that succeeded. */
+const ok = (gid: string): Body => ({ status_code: 200, body: { data: { gid } } });
 
 /** The actions of the last `POST /batch` the fake received. */
 function sentActions(calls: { url: URL; body?: unknown }[]): Body[] {
@@ -95,6 +99,34 @@ describe("batch", () => {
 		});
 		expect(refused.status).toBe(404);
 		expect(message(refused.body)).toBe("actions[1]: task: Not a recognized ID: 103");
+	});
+
+	it("refuses a batch inside a batch, which Asana does not run", async () => {
+		const { fake, gate } = await setupGate(POLICY);
+		const inner = { method: "post", relative_path: "/batch", data: { actions: [create("x")] } };
+		const refused = await gate.execute({
+			method: "POST",
+			path: "/batch",
+			body: { actions: [create("one"), inner] },
+		});
+		expect(refused.status).toBe(400);
+		expect(message(refused.body)).toBe("actions[1]: a batch cannot hold another batch");
+		expect(sentActions(fake.calls)).toStrictEqual([]);
+	});
+
+	it("keeps every chunk's results in their place when one chunk answers short", () => {
+		const results = joinedResults(
+			[
+				{ status: "fulfilled", value: { data: [ok("1")] } },
+				{ status: "fulfilled", value: { data: { unexpected: true } } },
+				{ status: "fulfilled", value: { data: [ok("5")] } },
+			],
+			[["a", "b"], ["c", "d"], ["e"]],
+		);
+		expect(results.map((result) => (result as Body).status_code)).toStrictEqual([
+			200, 500, 500, 500, 200,
+		]);
+		expect(results[4]).toStrictEqual(ok("5"));
 	});
 
 	it("merges a read's opt_fields into options.fields", async () => {

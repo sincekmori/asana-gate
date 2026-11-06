@@ -38,6 +38,13 @@ const REFERENCE_MEMBERS: Readonly<Record<string, "tag" | "user" | "project" | "t
 	team: "team",
 };
 
+/** Members whose values name users, which a request may name by gid, `me` or email. */
+const USER_MEMBERS: ReadonlySet<string> = new Set(
+	Object.entries(REFERENCE_MEMBERS)
+		.filter(([, kind]) => kind === "user")
+		.map(([member]) => member),
+);
+
 /** The resolver for a member's values, when they name objects. */
 function memberResolver(
 	member: string,
@@ -135,5 +142,12 @@ async function compileApplication(
 	};
 }
 
-export { compileApplication, compileRegExp, compileRequirement, memberResolver, optionResolver };
+export {
+	compileApplication,
+	compileRegExp,
+	compileRequirement,
+	memberResolver,
+	optionResolver,
+	USER_MEMBERS,
+};
 export type { RawApplication, ValueResolver };

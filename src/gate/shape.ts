@@ -2,10 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Resource } from "../catalog/resources.ts";
-import { applyApplication, checkRequirement } from "../policy/constraints.ts";
+import { USER_MEMBERS } from "../policy/compile-values.ts";
+import {
+	applyApplication,
+	checkRequirement,
+	type FieldRequirement,
+} from "../policy/constraints.ts";
 import { constraintsFor, labelOf } from "../policy/effective.ts";
 import type { Facts } from "../policy/evaluate.ts";
 import type { Policy } from "../policy/types.ts";
+import type { FactsLoader } from "./facts.ts";
 import { isObject } from "./objects.ts";
 
 type Body = Record<string, unknown>;
@@ -35,24 +41,41 @@ interface Scope {
 	readonly facts: Facts;
 }
 
+/** A {@link Scope} to shape a request body in, with the loader that finds the users the body names. */
+interface ShapeScope extends Scope {
+	readonly loader: Pick<FactsLoader, "userGid">;
+}
+
 /** A shaped request body, and the constraints it still breaks (empty when it satisfies them). */
 interface Shaped {
 	readonly data: Body;
 	readonly problems: readonly string[];
 }
 
+/** Whether `requirements` compare a user member with sets of users, which hold gids. */
+const comparesUsers = (key: string, requirements: readonly FieldRequirement[]): boolean =>
+	USER_MEMBERS.has(key) && requirements.some((r) => r.in !== undefined || r.notIn !== undefined);
+
+/** A user member's value with each user it names (`me`, an email) as their gid; one that names nobody stays. */
+async function withUserGids(value: unknown, loader: ShapeScope["loader"]): Promise<unknown> {
+	if (Array.isArray(value)) {
+		return Promise.all(value.map((item: unknown) => withUserGids(item, loader)));
+	}
+	return typeof value === "string" ? ((await loader.userGid(value)) ?? value) : value;
+}
+
 /**
  * Shapes a create or update request body under the constraints in force for
  * its target: applies the `apply` rules, then lists every `forbid` or
- * `require` rule the result does not satisfy. It never throws: the gate
- * refuses the request only after its permissions are checked, so that a
+ * `require` rule the result does not satisfy. It refuses nothing itself: the
+ * gate refuses the request only after its permissions are checked, so that a
  * constraint message cannot reveal an object the policy hides.
  */
-function shapeBody(
-	scope: Scope,
+async function shapeBody(
+	scope: ShapeScope,
 	target: { resource: Resource; verb: "create" | "update" },
-	body: Body,
-): Shaped {
+	body: Readonly<Body>,
+): Promise<Shaped> {
 	const effective = constraintsFor(scope.policy, scope.facts);
 	let data = { ...body };
 	for (const [key, application] of effective.apply.get(target.resource) ?? []) {
@@ -68,14 +91,22 @@ function shapeBody(
 			problems.push(`${labelOf(effective, key)} may not be set`);
 		}
 	}
-	for (const [key, requirements] of effective.require.get(target.resource) ?? []) {
-		const value = readMember(data, key);
-		for (const requirement of requirements) {
-			for (const violation of checkRequirement(value, requirement, { verb: target.verb })) {
-				problems.push(`${labelOf(effective, key)} ${violation}`);
-			}
-		}
-	}
+	// A request is compared by the users it names, however it names them.
+	const required = [...(effective.require.get(target.resource) ?? [])];
+	const violations = await Promise.all(
+		required.map(async ([key, requirements]) => {
+			const member = readMember(data, key);
+			const value = comparesUsers(key, requirements)
+				? await withUserGids(member, scope.loader)
+				: member;
+			return requirements.flatMap((requirement) =>
+				checkRequirement(value, requirement, { verb: target.verb }).map(
+					(violation) => `${labelOf(effective, key)} ${violation}`,
+				),
+			);
+		}),
+	);
+	problems.push(...violations.flat());
 	return { data, problems };
 }
 

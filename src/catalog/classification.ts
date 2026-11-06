@@ -127,11 +127,11 @@ function updateCheck(
 type Shaping = "shaped" | "checked" | "opaque";
 
 /** What a request must pass to act on `target`; creates and updates come with their body shaped by the policy. */
-function writeCheck(
+async function writeCheck(
 	ctx: PlanContext,
 	target: Target,
 	action: { resource: Resource; verb: Verb; shaping?: Shaping | undefined },
-): { check: Check; data?: Record<string, unknown> } {
+): Promise<{ check: Check; data?: Record<string, unknown> }> {
 	const { resource, verb, shaping = "shaped" } = action;
 	const plain: Check = { target, actions: [actionOf(resource, verb)] };
 	if (shaping === "opaque" || (verb !== "update" && verb !== "create")) {
@@ -140,7 +140,7 @@ function writeCheck(
 	if (shaping === "checked") {
 		return { check: verb === "update" ? updateCheck(target, resource, ctx.body) : plain };
 	}
-	const data = ctx.shape(target.facts, { resource, verb });
+	const data = await ctx.shape(target.facts, { resource, verb });
 	return { check: verb === "update" ? updateCheck(target, resource, data) : plain, data };
 }
 
@@ -204,7 +204,7 @@ function getOne(type: Resource): OperationRule {
 function updateOne(type: Resource): OperationRule {
 	return make({ resource: type, verb: "update", scope: "path" }, async (ctx) => {
 		const target = await ctx.anchor(type, pathGid(ctx));
-		const { check, data } = writeCheck(ctx, target, { resource: type, verb: "update" });
+		const { check, data } = await writeCheck(ctx, target, { resource: type, verb: "update" });
 		return {
 			checks: [check],
 			data,
@@ -275,7 +275,7 @@ function actOn(options: ActOnOptions): OperationRule {
 			ctx.anchor(options.on, pathGid(ctx)),
 			bodyRefs(ctx, options.also ?? []),
 		);
-		const { check, data } = writeCheck(ctx, target, {
+		const { check, data } = await writeCheck(ctx, target, {
 			resource,
 			verb: options.verb,
 			shaping: options.shaping,
@@ -289,6 +289,15 @@ function actOn(options: ActOnOptions): OperationRule {
 			}),
 		};
 	});
+}
+
+/**
+ * The check of a list read anchored on `target`: with `shared` the items take
+ * the target's facts, so its read decides them all; otherwise each item is
+ * decided by itself, and the read only counts for `limit` and `confirm`.
+ */
+function listCheck(target: Target, read: Action, shared: boolean): Check {
+	return shared ? { target, actions: [read] } : { target, actions: [], counted: [read] };
 }
 
 /** Options of {@link listUnder}. */
@@ -310,11 +319,7 @@ function listUnder(options: ListUnderOptions): OperationRule {
 		const read = actionOf(resource, "read");
 		return {
 			checks: [
-				{
-					target,
-					actions: shared ? [read] : [],
-					...(!shared && options.items !== "mixed" && { counted: [read] }),
-				},
+				options.items === "mixed" ? { target, actions: [] } : listCheck(target, read, shared),
 			],
 			response: {
 				kind: "list",
@@ -338,7 +343,10 @@ interface CreateUnderOptions {
 function createUnder(options: CreateUnderOptions): OperationRule {
 	return make({ resource: options.item, verb: "create", scope: "path" }, async (ctx) => {
 		const target = await ctx.anchor(options.under, pathGid(ctx));
-		const { check, data } = writeCheck(ctx, target, { resource: options.item, verb: "create" });
+		const { check, data } = await writeCheck(ctx, target, {
+			resource: options.item,
+			verb: "create",
+		});
 		return {
 			checks: [check],
 			data,
@@ -378,14 +386,25 @@ function onWorkspace(
 	verb: Verb,
 	options: WorkspaceOptions = {},
 ): OperationRule {
-	return make({ resource, verb, scope: options.scope ?? "workspace" }, (ctx) => {
+	return make({ resource, verb, scope: options.scope ?? "workspace" }, async (ctx) => {
 		const target = ctx.workspace(workspaceGidOf(ctx, options));
-		const { check, data } = writeCheck(ctx, target, { resource, verb, shaping: options.shaping });
-		return Promise.resolve({
+		if (verb === "read" && options.response === "list") {
+			// Filtered item by item, like every other list anchored on the workspace.
+			return {
+				checks: [listCheck(target, actionOf(resource, "read"), false)],
+				response: responseOf("list", resource),
+			};
+		}
+		const { check, data } = await writeCheck(ctx, target, {
+			resource,
+			verb,
+			shaping: options.shaping,
+		});
+		return {
 			checks: [check],
 			...(data && { data }),
 			response: responseOf(options.response ?? "raw", resource),
-		});
+		};
 	});
 }
 
@@ -404,7 +423,7 @@ interface OnBodyOptions {
 function onBody(options: OnBodyOptions): OperationRule {
 	return make({ resource: options.resource, verb: options.verb, scope: "body" }, async (ctx) => {
 		const target = await ctx.probe(ctx.bodyGid(options.field), options.types);
-		const { check, data } = writeCheck(ctx, target, {
+		const { check, data } = await writeCheck(ctx, target, {
 			resource: options.resource,
 			verb: options.verb,
 		});
@@ -453,9 +472,8 @@ function listBy(
 		const target =
 			found === undefined ? workspace : await ctx.probe(ctx.query[found.query], found.types);
 		const shared = options.shared === true && target.type !== "workspace";
-		const read = actionOf(resource, "read");
 		return {
-			checks: [{ target, actions: shared ? [read] : [], ...(!shared && { counted: [read] }) }],
+			checks: [listCheck(target, actionOf(resource, "read"), shared)],
 			response: { kind: "list", type: resource, ...(shared && { facts: target.facts }) },
 		};
 	});
@@ -467,19 +485,14 @@ async function assigneeOf(
 	body: Readonly<Record<string, unknown>>,
 ): Promise<string | null> {
 	const raw = body.assignee;
-	const { me } = ctx.policy;
-	if (raw === "me" || raw === me.gid || raw === me.email) {
-		return me.gid;
-	}
 	if (typeof raw !== "string") {
 		return refOf(raw)?.gid ?? null;
 	}
-	if (raw === "" || isGid(raw)) {
-		return raw === "" ? null : raw;
+	if (raw === "") {
+		return null;
 	}
-	// An email: assignee scopes compare user gids, so the request is judged by the user it names.
-	const user = await ctx.loader.load("user", raw);
-	const gid = user === undefined ? undefined : stringOf(user.object.gid);
+	// Assignee scopes compare user gids, so the request is judged by the user it names.
+	const gid = await ctx.loader.userGid(raw);
 	if (gid === undefined) {
 		throw badRequest(`assignee: Unknown object: ${raw}`);
 	}
@@ -565,12 +578,18 @@ async function createdTaskFacts(
 			...cross,
 		};
 	}
+	// A subtask with projects of its own still descends from its parent, as one without takes in.
+	const [parentBranch] = placement.parent?.facts.branches ?? [];
 	const branches = placement.homes.map(({ membership, project }) => {
 		const [branch] = project.facts.branches;
 		if (branch === undefined || project.facts.workspace !== ctx.policy.workspace) {
 			throw notFound("project", project.gid);
 		}
-		return { ...branch, ...(membership.section !== undefined && { section: membership.section }) };
+		return {
+			...branch,
+			...(membership.section !== undefined && { section: membership.section }),
+			...(parentBranch !== undefined && { taskChain: parentBranch.taskChain }),
+		};
 	});
 	return { workspace: workspace.gid, branches, ...cross };
 }
@@ -589,7 +608,7 @@ function createTaskRule(scope: "body" | "path"): OperationRule {
 			),
 		);
 		const preliminary = await createdTaskFacts(ctx, { parent, homes }, ctx.body);
-		const data = ctx.shape(preliminary, { resource: "task", verb: "create" });
+		const data = await ctx.shape(preliminary, { resource: "task", verb: "create" });
 		// The shaped body may carry other tags, assignee or custom field values.
 		const facts = {
 			...preliminary,
@@ -611,8 +630,9 @@ function createTaskRule(scope: "body" | "path"): OperationRule {
 	});
 }
 
-/** The task as it would be placed in `container` (a project or a section), optionally in `section`. */
+/** The task as it would be placed in `container` (a project or a section), optionally in `section`; it keeps its ancestors. */
 function homedIn(task: Target, container: Facts, section?: string): Target {
+	const taskChain = task.facts.branches[0]?.taskChain ?? [task.gid];
 	return {
 		type: "task",
 		gid: task.gid,
@@ -622,7 +642,7 @@ function homedIn(task: Target, container: Facts, section?: string): Target {
 			branches: container.branches.map((branch) => ({
 				...branch,
 				...(section !== undefined && { section }),
-				taskChain: [task.gid],
+				taskChain,
 			})),
 		},
 	};
@@ -723,8 +743,10 @@ const addTaskForSectionRule = make(
 			ctx.anchor("task", ctx.bodyGid("task")),
 		);
 		const [sectionBranch] = section.facts.branches;
-		const alreadyIn = task.facts.branches.some(
-			(branch) => branch.project === sectionBranch?.project,
+		// Only the task's own memberships count: a subtask placed through its parent is not in the
+		// parent's projects, and adding it to one of them puts it there.
+		const alreadyIn = membershipsOf(task.object ?? {}).some(
+			(membership) => membership.project === sectionBranch?.project,
 		);
 		const destination = homedIn(task, section.facts);
 		const moveActions = [actionOf("task", "move")];
@@ -907,6 +929,10 @@ async function planBatchAction(
 	if (match === undefined) {
 		throw inAction(noRoute(), index);
 	}
+	if (match.operationId === "createBatchRequest") {
+		// Asana does not run a batch inside a batch.
+		throw badRequest(`actions[${index}]: a batch cannot hold another batch`);
+	}
 	// Asana rejects query strings in relative_path; GET and DELETE actions carry
 	// their parameters in `data` instead (verified live).
 	const data = dataOf(action.data);
@@ -1017,7 +1043,7 @@ function teamTarget(ctx: PlanContext): Promise<Target | undefined> {
 function updateMovable(type: "project" | "goal"): OperationRule {
 	return make({ resource: type, verb: "update", scope: "path" }, async (ctx) => {
 		const [target, team] = await both(ctx.anchor(type, pathGid(ctx)), teamTarget(ctx));
-		const { check, data } = writeCheck(ctx, target, { resource: type, verb: "update" });
+		const { check, data } = await writeCheck(ctx, target, { resource: type, verb: "update" });
 		const current = target.facts.branches.map((branch) => branch.team);
 		const moves = team !== undefined && !current.includes(team.gid);
 		return {
@@ -1040,7 +1066,7 @@ function createInTeam(resource: "project" | "goal", workspaceIn: "body" | "path"
 			workspaceIn === "path" ? pathGid(ctx) : ctx.bodyGid("workspace"),
 		);
 		const target = (await teamTarget(ctx)) ?? workspace;
-		const { check, data } = writeCheck(ctx, target, { resource, verb: "create" });
+		const { check, data } = await writeCheck(ctx, target, { resource, verb: "create" });
 		return { checks: [check], data, response: { kind: "item", type: resource } };
 	});
 }
@@ -1097,7 +1123,11 @@ function createFromRule(options: CreateFromOptions): OperationRule {
 	const { from, resource, shaping } = options;
 	return make({ resource, verb: "create", scope: "path" }, async (ctx) => {
 		const [source, team] = await both(ctx.anchor(from, pathGid(ctx)), teamTarget(ctx));
-		const { check, data } = writeCheck(ctx, team ?? source, { resource, verb: "create", shaping });
+		const { check, data } = await writeCheck(ctx, team ?? source, {
+			resource,
+			verb: "create",
+			shaping,
+		});
 		const actions = options.read === true ? [actionOf(from, "read")] : [];
 		return { checks: [{ target: source, actions }, check], data, response: RAW };
 	});
@@ -1120,7 +1150,7 @@ const instantiateTaskRule = make(
 	{ resource: "task", verb: "create", scope: "path" },
 	async (ctx) => {
 		const template = await ctx.anchor("task_template", pathGid(ctx));
-		const { check, data } = writeCheck(ctx, template, {
+		const { check, data } = await writeCheck(ctx, template, {
 			resource: "task",
 			verb: "create",
 			shaping: "opaque",
@@ -1145,7 +1175,7 @@ function userRule(verb: "read" | "update"): OperationRule {
 		const [workspaceGid, userGid] = gids.length > 1 ? gids : [ctx.query.workspace, gids[0]];
 		const workspace = ctx.workspace(workspaceGid);
 		const user = await ctx.anchor("user", userGid);
-		const { check, data } = writeCheck(ctx, user, { resource: "user", verb });
+		const { check, data } = await writeCheck(ctx, user, { resource: "user", verb });
 		return {
 			checks: [{ target: workspace, actions: [] }, check],
 			...(data && { data }),
@@ -1184,13 +1214,14 @@ function forUserRule(resource: Resource, options: ForUserOptions = {}): Operatio
 			options.mixed === true
 				? listOfQueried(ctx.query.resource_type)
 				: { kind: "list", type: resource };
+		// The user's task list is one object at workspace level; the lists are filtered item by item.
+		const one = options.one === true;
 		return {
 			checks: [
 				{ target: user, actions: [] },
-				{ target: workspace, actions: [actionOf(resource, "read")] },
+				listCheck(workspace, actionOf(resource, "read"), one),
 			],
-			response:
-				options.one === true ? { kind: "item", type: resource, facts: workspace.facts } : list,
+			response: one ? { kind: "item", type: resource, facts: workspace.facts } : list,
 		};
 	});
 }

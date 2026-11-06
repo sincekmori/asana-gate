@@ -95,10 +95,12 @@ async function runMcp(argv: readonly string[], version: string): Promise<number>
 				authToken: httpAuthToken(mcp.authTokenEnv, mcp.host),
 			}));
 	context.logger.info(`serving MCP on ${serving.endpoint}`);
-	// Signal listeners do not keep the event loop alive: over stdio the process
-	// ends when the client closes stdin; over HTTP the listening socket keeps it
-	// up until a signal arrives.
-	await Promise.race([once(process, "SIGINT"), once(process, "SIGTERM")]);
+	// Serves until a signal arrives or, over stdio, the client closes stdin. That
+	// end must settle the wait: signal listeners do not keep the event loop
+	// alive, so a wait left pending would end the process with Node's exit code
+	// 13 (unsettled top-level await) instead of 0.
+	const stops = [once(process, "SIGINT"), once(process, "SIGTERM")];
+	await Promise.race(serving.ended === undefined ? stops : [...stops, serving.ended]);
 	await serving.close();
 	return 0;
 }

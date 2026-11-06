@@ -136,6 +136,36 @@ describe("constraint values and member names", () => {
 			'"completd" is not a request member of task',
 		);
 	});
+
+	it("accepts the members a task's link operations change in `fields`", async () => {
+		const policy = await compile(
+			`  - allow: [read]\n    fields: { task: [dependencies, dependents] }\n`,
+		);
+		const rule = policy.rules.find((compiled) => compiled.fields !== undefined);
+		expect(rule?.fields?.get("task")).toStrictEqual(new Set(["dependencies", "dependents"]));
+	});
+
+	it("refuses custom_fields that mix operators with field names, rather than drop either", async () => {
+		await expect(
+			compile(`  - require: { task: { custom_fields: { present: true, Owner: { in: [AI] } } } }\n`),
+		).rejects.toThrow(
+			"rules[0].require.task.custom_fields: mixes operators (present) with custom fields (Owner)",
+		);
+		await expect(
+			compile(`  - apply: { task: { custom_fields: { value: x, Owner: AI } } }\n`),
+		).rejects.toThrow("mixes operators (value) with custom fields (Owner)");
+	});
+
+	it("rejects a date bound that is no date when the policy loads", () => {
+		expect(() =>
+			parsePolicy(ruleText('require: { task: { due_on: { min: "2026-13-45" } } }')),
+		).toThrow(
+			"a date: YYYY-MM-DD, ISO 8601, today, now, +7d or -1d\n  → at rules[0].require.task.due_on.min",
+		);
+		expect(() =>
+			parsePolicy(ruleText('require: { task: { due_on: { min: today, max: "+30d" } } }')),
+		).not.toThrow();
+	});
 });
 
 describe("parsePolicy", () => {

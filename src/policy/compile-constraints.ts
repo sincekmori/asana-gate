@@ -1,7 +1,7 @@
 // Copyright 2026 Shinsuke Mori
 // SPDX-License-Identifier: Apache-2.0
 
-import { requestMembers, responseMembers } from "../catalog/members.ts";
+import { requestMembers, responseMembers, updatableMembers } from "../catalog/members.ts";
 import {
 	type Action,
 	actionOf,
@@ -41,19 +41,42 @@ function asResource(name: string, label: string): Resource {
 	return name;
 }
 
-/** Checks that `member` is a request member of `resource`'s create or update operations. */
-function assertRequestMember(resource: Resource, member: string, label: string): void {
-	const members = requestMembers(resource);
-	if (members !== undefined && !members.has(member)) {
+/** Checks that `members` of a resource, when they are known, include `member`. */
+function assertMember(
+	members: ReadonlySet<string> | undefined,
+	at: { readonly resource: Resource; readonly member: string; readonly label: string },
+): void {
+	if (members !== undefined && !members.has(at.member)) {
 		throw new PolicyError(
-			`${label}: "${member}" is not a request member of ${resource} (one of: ${[...members].toSorted().join(", ")})`,
+			`${at.label}: "${at.member}" is not a request member of ${at.resource} (one of: ${[...members].toSorted().join(", ")})`,
 		);
 	}
 }
 
-/** Whether a `custom_fields` spec nests field names, rather than constraining the member itself. */
-const isNested = (value: unknown): value is Record<string, unknown> =>
-	isObject(value) && !Object.keys(value).some((key) => OPERATOR_KEYS.has(key));
+/** Checks that `member` is a request member of `resource`'s create or update operations. */
+function assertRequestMember(resource: Resource, member: string, label: string): void {
+	assertMember(requestMembers(resource), { resource, member, label });
+}
+
+/**
+ * Whether a `custom_fields` spec nests field names, rather than constraining
+ * the member itself. A spec that mixes the two is refused: reading it either
+ * way would drop part of it.
+ */
+function isNested(value: unknown, label: string): value is Record<string, unknown> {
+	if (!isObject(value)) {
+		return false;
+	}
+	const keys = Object.keys(value);
+	const operators = keys.filter((key) => OPERATOR_KEYS.has(key));
+	if (operators.length > 0 && operators.length < keys.length) {
+		const fields = keys.filter((key) => !OPERATOR_KEYS.has(key));
+		throw new PolicyError(
+			`${label}: mixes operators (${operators.join(", ")}) with custom fields (${fields.join(", ")}); put the operators under each field, and name a field called like an operator by its gid`,
+		);
+	}
+	return operators.length === 0;
+}
 
 /** One compiled member entry of a `require` or `apply` block. */
 type MemberEntry<Out> = readonly [key: string, value: Out];
@@ -66,7 +89,7 @@ async function compileMemberEntries<Out>(
 ): Promise<MemberEntry<Out>[]> {
 	const label = `${context.label}.${args.resource}.${args.member}`;
 	assertRequestMember(args.resource, args.member, context.label);
-	if (args.member !== "custom_fields" || !isNested(args.spec)) {
+	if (args.member !== "custom_fields" || !isNested(args.spec, label)) {
 		return [[args.member, await compile(args.spec, label, memberResolver(args.member, context))]];
 	}
 	const nested = await Promise.all(
@@ -194,8 +217,13 @@ function compileFields(
 			throw new PolicyError(`rules[${index}].fields: ${resource} has no update verb`);
 		}
 		allowed.add(actionOf(resource, "update"));
+		const updatable = updatableMembers(resource);
 		for (const name of names) {
-			assertRequestMember(resource, name, `rules[${index}].fields`);
+			assertMember(updatable, {
+				resource,
+				member: name,
+				label: `rules[${index}].fields`,
+			});
 			const verb = FIELD_VERBS[resource]?.[name];
 			if (verb !== undefined) {
 				allowed.add(actionOf(resource, verb));

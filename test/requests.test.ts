@@ -23,6 +23,7 @@ rules:
 
 const attach = TOOLS.find((spec) => spec.name === "asana_create_attachment");
 const createTask = TOOLS.find((spec) => spec.name === "asana_create_task");
+const getUser = TOOLS.find((spec) => spec.name === "asana_get_user");
 
 /** The request of asana_create_attachment for a link. */
 function linkRequest(parent: string, name: string, policy: Policy): GateRequest {
@@ -64,6 +65,20 @@ describe("request bodies and paths", () => {
 		expect(
 			createTask?.input.safeParse({ name: "x", projects: ["21"], section: "31" }).success,
 		).toBe(true);
+	});
+
+	it("names the workspace for a task without a project or parent, an empty list included", async () => {
+		const { gate } = await setupGate(POLICY);
+		const sent = (input: Record<string, unknown>): unknown =>
+			createTask?.request(createTask.input.parse({ name: "x", ...input }), gate.policy).body;
+		expect(sent({ projects: [] })).toMatchObject({ workspace: "1" });
+		expect(sent({ projects: ["21"] })).not.toHaveProperty("workspace");
+		expect(sent({ parent: "101" })).not.toHaveProperty("workspace");
+	});
+
+	it("needs a user to read, since an empty one would read the list of users", () => {
+		expect(getUser?.input.safeParse({ user: "" }).success).toBe(false);
+		expect(getUser?.input.safeParse({ user: "me" }).success).toBe(true);
 	});
 
 	it("reads Asana's { data, options } envelope, and refuses other envelopes", async () => {

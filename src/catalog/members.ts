@@ -48,6 +48,27 @@ function requestMembers(resource: Resource): ReadonlySet<string> | undefined {
 	return new Set(operations.flatMap((id) => OPERATIONS[id].bodyParams));
 }
 
+/**
+ * Operations that change members of a resource its update operation does not
+ * take; they are checked against the `fields` allowlist of its update
+ * (`POST /tasks/{gid}/addDependencies` changes a task's `dependencies`).
+ */
+const LINK_OPERATIONS: Partial<Record<Resource, readonly OperationId[]>> = {
+	task: [
+		"addDependenciesForTask",
+		"removeDependenciesForTask",
+		"addDependentsForTask",
+		"removeDependentsForTask",
+	],
+};
+
+/** The members a `fields` allowlist of `resource` may name: its request members and those its link operations change. */
+function updatableMembers(resource: Resource): ReadonlySet<string> | undefined {
+	const members = requestMembers(resource);
+	const linked = (LINK_OPERATIONS[resource] ?? []).flatMap((id) => OPERATIONS[id].bodyParams);
+	return members === undefined ? undefined : new Set([...members, ...linked]);
+}
+
 /** The response members of a resource's objects, from the OpenAPI snapshot; `undefined` when unknown. */
 function responseMembers(resource: Resource): ReadonlySet<string> | undefined {
 	const operations = WRITE_OPERATIONS[resource] ?? [];
@@ -64,4 +85,4 @@ function responseMembers(resource: Resource): ReadonlySet<string> | undefined {
 	return names.size > 0 ? names : undefined;
 }
 
-export { requestMembers, responseMembers };
+export { requestMembers, responseMembers, updatableMembers };

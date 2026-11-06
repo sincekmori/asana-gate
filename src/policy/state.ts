@@ -1,6 +1,7 @@
 // Copyright 2026 Shinsuke Mori
 // SPDX-License-Identifier: Apache-2.0
 
+import { parseInstant } from "./durations.ts";
 import type { Facts, ObjectState } from "./evaluate.ts";
 import type { CompiledWhere } from "./types.ts";
 
@@ -30,7 +31,7 @@ function untilDue(dueOn: string | null | undefined, now: number): number | undef
 	if (dueOn === undefined || dueOn === null) {
 		return undefined;
 	}
-	const due = Date.parse(dueOn.length === 10 ? `${dueOn}T23:59:59.999Z` : dueOn);
+	const due = parseInstant(dueOn.length === 10 ? `${dueOn}T23:59:59.999` : dueOn);
 	return Number.isNaN(due) ? undefined : due - now;
 }
 

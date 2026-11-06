@@ -4,6 +4,7 @@
 
 `asana-gate mcp` serves the curated tools the policy could ever allow (a read-only policy lists no writing tool), plus three generic ones; the policy is applied when a tool runs.
 Claude Code loads tool definitions on demand once they grow large, so a long list costs little there.
+The server's instructions tell the agent whom every request runs as: the gid of the token's user and the name and gid of the workspace, so it can tell which `assignee`, `created_by` or `followers` in a response is itself; the user's name and email are added only as far as the policy would show them through `GET /users/me` (`workspace:read` and `user:read` at workspace level, then `redact`).
 
 - Curated tools for everyday work: `asana_search_tasks`, `asana_list_tasks`, `asana_get_task`, `asana_create_task`, `asana_update_task`, `asana_create_comment`, `asana_move_task_to_section`, `asana_add_tag_to_task`, `asana_list_projects`, `asana_create_section`, `asana_typeahead`, `asana_get_me` and more.
 - `asana_create_tasks` and `asana_update_tasks` take up to 50 tasks at once: the gate checks each one, Asana runs them ten at a time, and the result holds one status per task.
@@ -15,8 +16,8 @@ Refusals come back as tool errors whose text is the JSON error body, so agents s
 ### Confirmations
 
 When a rule's `confirm` covers the action, the server asks the person through MCP elicitation before the call runs; nothing reaches Asana until they say yes.
-On a connection that negotiated the 2026-07-28 protocol revision the tool call answers with an `input_required` result carrying a form elicitation and a sealed `requestState`; the client shows it and resends the same call with the answer and the state, which the server checks before executing, so an answer counts only for the question this server asked.
-On an older connection the server sends `elicitation/create` itself and waits for the answer.
+On a connection that negotiated the 2026-07-28 protocol revision the tool call answers with an `input_required` result carrying a form elicitation and a sealed `requestState`; the client shows it and resends the same call with the answer and the state, which the server checks before executing, so an answer counts only for the question this server asked, about the call with these very arguments.
+On an older connection the server sends `elicitation/create` itself and waits up to ten minutes for the answer.
 A declined or cancelled confirmation refuses the call with a 403.
 A client that does not implement elicitation cannot confirm, so the action does not run (428).
 Over the HTTP transport an older client is served one request at a time and cannot receive `elicitation/create`, so confirmations there need a client on the 2026-07-28 revision.

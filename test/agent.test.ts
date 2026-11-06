@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import manifest from "../package.json" with { type: "json" };
 import { agentsNamed, auditAgentFiles, refreshSkillCopies, wireAgents } from "../src/cli/agent.ts";
+import { parseJsonc } from "../src/json.ts";
 
 const { version } = manifest;
 
@@ -19,8 +20,12 @@ async function wired(): Promise<string> {
 	return project;
 }
 
+/** A JSON file as the agents read it: comments and trailing commas allowed. */
 const readJson = async (file: string): Promise<Record<string, unknown>> =>
-	JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+	parseJsonc(await readFile(file, "utf8"), file, (message) => new Error(message)) as Record<
+		string,
+		unknown
+	>;
 
 describe("agent wiring", () => {
 	it("writes the skill copies, the server entries and the token rule", async () => {
@@ -88,6 +93,9 @@ describe("agent wiring", () => {
 		expect(Object.keys(document.servers)).toStrictEqual(["other", "asana-gate"]);
 		expect(document.servers.other).toStrictEqual({ url: "http://x/*y*/" });
 		const written = await readFile(file, "utf8");
+		// The server entry is added in place: the file's comments stay.
+		expect(written).toContain("// mine");
+		expect(written).toContain("/* end */");
 		await writeFile(file, written.replace("{", "{ // pinned\n"));
 		await expect(auditAgentFiles(project, version)).resolves.toStrictEqual([]);
 	});

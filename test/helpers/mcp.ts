@@ -20,9 +20,11 @@ rules:
     deny: ["*"]
 `;
 
-/** A client connected in memory to a server over the fake Asana; `close` tears both down. */
-export async function connectMcp(): Promise<{ client: Client; close: () => Promise<void> }> {
-	const { gate } = await setupGate(POLICY);
+/** A client connected in memory to a server over the fake Asana, under `policy`; `close` tears both down. */
+export async function connectMcp(
+	policy = POLICY,
+): Promise<{ client: Client; close: () => Promise<void> }> {
+	const { gate } = await setupGate(policy);
 	const server = createAsanaGateServer(gate, { version: "0.0.0-test" });
 	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 	await server.connect(serverTransport);

@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { hostHeaderValidation, originValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { serveStdio, StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 
 import type { Gate } from "../gate/gate.ts";
 import type { Logger } from "../log.ts";
@@ -17,6 +17,8 @@ import { createAsanaGateServer } from "./server.ts";
 interface Serving {
 	/** Where clients connect: `stdio`, or the HTTP URL. */
 	readonly endpoint: string;
+	/** Settles when the client ends the connection (over stdio, by closing stdin); absent over HTTP, which serves until closed. */
+	readonly ended?: Promise<unknown>;
 	close(): Promise<void>;
 }
 
@@ -56,12 +58,23 @@ function reject(res: ServerResponse, status: number, message: string): void {
 
 /** Serves the gate over stdio (one connection, the current process's stdin/stdout). */
 function serveOverStdio(gate: Gate, version: string, logger: Logger): Serving {
+	const transport = new StdioServerTransport();
 	const handle = serveStdio((ctx) => createAsanaGateServer(gate, { version, era: ctx.era }), {
+		transport,
 		onerror: (error) => {
 			logger.error(`stdio: ${error.message}`);
 		},
 	});
-	return { endpoint: "stdio", close: () => handle.close() };
+	// serveStdio has set the transport's onclose (a callback slot, not an event target); chained
+	// onto it, as the SDK's own Protocol chains it, it also tells when the client has gone.
+	const { promise: ended, resolve } = Promise.withResolvers<null>();
+	const { onclose } = transport;
+	// oxlint-disable-next-line unicorn/prefer-add-event-listener
+	transport.onclose = (): void => {
+		onclose?.();
+		resolve(null);
+	};
+	return { endpoint: "stdio", ended, close: () => handle.close() };
 }
 
 /** Serves the gate over Streamable HTTP on `host:port`. */
