@@ -4,9 +4,11 @@
 import type { CallToolResult } from "@modelcontextprotocol/server";
 
 import { AsanaApiError } from "../asana/errors.ts";
+import type { Resource } from "../catalog/resources.ts";
 import { GateError } from "../gate/errors.ts";
 import type { GateResponse } from "../gate/gate.ts";
 import { messageOf } from "../log.ts";
+import type { Explanation } from "../policy/evaluate.ts";
 
 /** How gate responses and errors become MCP tool results. */
 
@@ -31,4 +33,18 @@ function errorResult(error: unknown): CallToolResult {
 	return { content: [{ type: "text", text: messageOf(error) }], isError: true };
 }
 
-export { errorResult, jsonResult, toToolResult };
+/** What `asana_allowed_actions` answers: the actions the policy allows and denies on one object. */
+function explanationBody(
+	type: Resource,
+	gid: string,
+	explanation: Explanation,
+): Record<string, unknown> {
+	return {
+		resource_type: type,
+		gid,
+		allowed_actions: explanation.actions.filter((d) => d.allowed).map((d) => d.action),
+		denied_actions: explanation.actions.filter((d) => !d.allowed).map((d) => d.action),
+	};
+}
+
+export { errorResult, explanationBody, jsonResult, toToolResult };

@@ -11,6 +11,7 @@ import { type OperationId, OPERATIONS } from "../catalog/operations.gen.ts";
 import type { Action } from "../catalog/resources.ts";
 import type { GateRequest } from "../gate/gate.ts";
 import { fillPath } from "../gate/router.ts";
+import { grantedActions } from "../policy/evaluate.ts";
 import { GidSchema } from "../policy/schema.ts";
 import type { Policy } from "../policy/types.ts";
 
@@ -952,5 +953,11 @@ const TOOLS: readonly AnyToolSpec[] = [
 	}),
 ];
 
-export { BATCH_NOTE, TOOLS };
+/** The curated tools the policy could ever allow: those needing an action some rule allows somewhere. */
+function exposedTools(policy: Policy): AnyToolSpec[] {
+	const allowed = grantedActions(policy);
+	return TOOLS.filter((spec) => spec.needs.some((action) => allowed.has(action)));
+}
+
+export { BATCH_NOTE, exposedTools, TOOLS };
 export type { AnyToolSpec, CliShape, ToolSpec };

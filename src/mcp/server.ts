@@ -10,18 +10,18 @@ import {
 import * as z from "zod";
 
 import { renderQuery } from "../asana/query.ts";
-import { RESOURCES, type Resource } from "../catalog/resources.ts";
+import { RESOURCES } from "../catalog/resources.ts";
 import type { Gate, GateRequest } from "../gate/gate.ts";
-import { type Explanation, grantedActions } from "../policy/evaluate.ts";
 import {
 	confirmHandlerFor,
 	ElicitationNeededError,
 	type ProtocolEra,
 	verifyConfirmState,
 } from "./confirm.ts";
+import { instructionsFor } from "./instructions.ts";
 import { listOperations } from "./operations.ts";
-import { errorResult, jsonResult, toToolResult } from "./results.ts";
-import { type AnyToolSpec, BATCH_NOTE, TOOLS } from "./tools.ts";
+import { errorResult, explanationBody, jsonResult, toToolResult } from "./results.ts";
+import { BATCH_NOTE, exposedTools } from "./tools.ts";
 
 /** Options for {@link createAsanaGateServer}. */
 interface ServerOptions {
@@ -30,15 +30,6 @@ interface ServerOptions {
 	/** The protocol era this instance serves; decides how confirmations are asked. */
 	era?: ProtocolEra;
 }
-
-const INSTRUCTIONS = `asana-gate puts a policy in front of the Asana API. Everything you can see or do here is decided by that policy, not by Asana.
-
-- Objects the policy hides do not exist for you: requests for them return the same "Not a recognized ID" 404 Asana returns for nonexistent gids, and lists never contain them.
-- Every object in a response carries "allowed_actions": the <resource>:<verb> actions the policy currently allows on it (e.g. "task:update", "story:create"). Check it before writing; a refused action returns 403 with an asana-gate message.
-- The policy may also shape requests: it can require members (a 400 names what is missing or wrong), fill in defaults and prefixes, hide members, cap how often an action runs (429), and ask the person for confirmation before an action (answer the elicitation).
-- Use the curated asana_* tools for common work. asana_request reaches every Asana REST operation with the same policy; asana_operations lists them with the action each one needs; asana_allowed_actions tells what you may do with one object.
-- Only the curated tools the policy could ever allow are listed; asana_request reaches every other operation the policy permits. ${BATCH_NOTE}
-- Results are pages: pass next_page.offset back as offset to continue.`;
 
 /** What a gated tool call needs besides its request. */
 interface ToolCall {
@@ -66,29 +57,10 @@ async function gated(
 	}
 }
 
-function explanationBody(
-	type: Resource,
-	gid: string,
-	explanation: Explanation,
-): Record<string, unknown> {
-	return {
-		resource_type: type,
-		gid,
-		allowed_actions: explanation.actions.filter((d) => d.allowed).map((d) => d.action),
-		denied_actions: explanation.actions.filter((d) => !d.allowed).map((d) => d.action),
-	};
-}
-
 const METHODS = ["GET", "POST", "PUT", "DELETE"] as const;
 const QueryValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]);
 const QuerySchema = z.record(z.string(), QueryValueSchema);
 const BodySchema = z.record(z.string(), z.unknown());
-
-/** The curated tools the policy could ever allow: those needing an action some rule allows somewhere. */
-function exposedTools(policy: Gate["policy"]): AnyToolSpec[] {
-	const allowed = grantedActions(policy);
-	return TOOLS.filter((spec) => spec.needs.some((action) => allowed.has(action)));
-}
 
 /** Builds the MCP server exposing the gate: the curated tools the policy could allow, plus the generic ones. */
 function createAsanaGateServer(gate: Gate, options: ServerOptions): McpServer {
@@ -97,7 +69,7 @@ function createAsanaGateServer(gate: Gate, options: ServerOptions): McpServer {
 		{ name: "asana-gate", version: options.version, title: "Asana (policy-gated)" },
 		{
 			capabilities: { tools: {} },
-			instructions: INSTRUCTIONS,
+			instructions: instructionsFor(gate.policy),
 			// Confirmation answers count only for the question this server asked.
 			requestState: { verify: verifyConfirmState },
 		},
