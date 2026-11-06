@@ -1,7 +1,7 @@
 // Copyright 2026 Shinsuke Mori
 // SPDX-License-Identifier: Apache-2.0
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -151,6 +151,23 @@ describe("settings", () => {
 		});
 		expect(loaded.projectDir).toBeUndefined();
 		expect(loaded.origins.get("log.level")).toBe(join(home, "settings.yaml"));
+	});
+
+	it("never takes the asana-gate home for a project's directory when a symbolic link leads to it", async () => {
+		const temporary = await mkdtemp(join(tmpdir(), "asana-gate-link-"));
+		const root = await realpath(temporary);
+		const user = join(root, "user");
+		await mkdir(join(user, ".asana-gate"), { recursive: true });
+		await mkdir(join(user, "work"), { recursive: true });
+		await symlink(user, join(root, "home"));
+		// $HOME names the link; the working directory comes with the links resolved, as process.cwd() gives it.
+		const loaded = await loadSettings({
+			cwd: join(user, "work"),
+			home: join(root, "home", ".asana-gate"),
+			managedDir: join(root, "managed"),
+			env: {},
+		});
+		expect(loaded.projectDir).toBeUndefined();
 	});
 
 	it("reads ASANA_GATE_CACHE in any case and ignores a spelling it does not know", async () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { isObject } from "../json.ts";
-import { resolveDateBound } from "./durations.ts";
+import { parseInstant, resolveDateBound } from "./durations.ts";
 
 /**
  * The content constraints a rule may carry (require / apply / forbid /
@@ -155,7 +155,7 @@ function boundViolation(
 		return ok ? undefined : `must be ${atLeast ? "at least" : "at most"} ${bound.limit}`;
 	}
 	const limit = typeof bound.limit === "string" ? resolveDateBound(bound.limit, now) : undefined;
-	const actual = typeof value === "string" ? Date.parse(value) : Number.NaN;
+	const actual = typeof value === "string" ? parseInstant(value) : Number.NaN;
 	if (limit === undefined || Number.isNaN(actual)) {
 		return `must be comparable with ${String(bound.limit)}`;
 	}

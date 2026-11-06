@@ -15,6 +15,7 @@ import {
 	WORKSPACE_BRANCH,
 	workspaceFacts,
 } from "../policy/evaluate.ts";
+import { isGid } from "../policy/schema.ts";
 import { needsTaskChain, portfoliosNamed } from "../policy/scope.ts";
 import type { CompiledWhere, Policy } from "../policy/types.ts";
 import { TtlCache } from "./cache.ts";
@@ -30,6 +31,7 @@ import {
 	stringOf,
 } from "./objects.ts";
 import { PortfolioIndex } from "./portfolio-index.ts";
+import { isPathSegment } from "./router.ts";
 import {
 	fieldsOf,
 	parseSelection,
@@ -428,6 +430,10 @@ class FactsLoader {
 	 * exactly like an invisible object.
 	 */
 	public async load(type: Resource, gid: string): Promise<Loaded | undefined> {
+		if (!isPathSegment(gid)) {
+			// No object has an empty gid, `.` or `..`; asking Asana would read another path.
+			return undefined;
+		}
 		if (type === "workspace") {
 			return { type, object: { gid, resource_type: "workspace" }, facts: workspaceFacts(gid) };
 		}
@@ -441,6 +447,19 @@ class FactsLoader {
 		}
 		const facts = await this.fromObject(type, object);
 		return facts === undefined ? undefined : { type, object, facts };
+	}
+
+	/** The gid of the user `ref` names (`me`, a gid or an email); `undefined` when it names nobody. */
+	public async userGid(ref: string): Promise<string | undefined> {
+		const { me } = this.policy;
+		if (ref === "me" || ref === me.email) {
+			return me.gid;
+		}
+		if (isGid(ref)) {
+			return ref;
+		}
+		const user = await this.load("user", ref);
+		return stringOf(user?.object.gid);
 	}
 
 	/**
@@ -769,8 +788,8 @@ class FactsLoader {
 	): Promise<AsanaObject | undefined> {
 		const { type, gid, key, generation } = fetch;
 		const path = objectPath(type);
-		// A gid with a lone surrogate cannot be sent, and names nothing.
-		if (path === undefined || !gid.isWellFormed()) {
+		// A gid that cannot be sent as its own path segment names nothing.
+		if (path === undefined || !isPathSegment(gid)) {
 			return undefined;
 		}
 		const ttl = type === "project" ? this.projectTtlMs : undefined;

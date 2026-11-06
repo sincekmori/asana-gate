@@ -4,7 +4,7 @@
 import type { Action } from "../catalog/resources.ts";
 import { expandActionPatterns } from "./actions.ts";
 import { compileConstraints, compileFields } from "./compile-constraints.ts";
-import { isGid, type PolicyFile, type PolicyRule, type PolicyWhere } from "./schema.ts";
+import { isGid, matches, type PolicyFile, type PolicyRule, type PolicyWhere } from "./schema.ts";
 import { compileState, specificityOf } from "./scope.ts";
 import {
 	type CompiledCustomFieldPredicate,
@@ -222,14 +222,13 @@ async function compiledLayer(
 ): Promise<{ layer: PolicyLayer; rules: CompiledRule[] }> {
 	const { source, layer, first, named } = entry;
 	const { path: file, role } = source;
+	// A file that names anything but the governed workspace is not in force here,
+	// whether or not this token can see the workspace it names.
+	const { workspace } = source.file;
+	if (!first && workspace !== undefined && !matches(workspace)(governed)) {
+		return { layer: { file, role, otherWorkspace: workspace }, rules: [] };
+	}
 	try {
-		const own =
-			first || source.file.workspace === undefined
-				? governed
-				: await resolver.workspace(source.file.workspace);
-		if (own.gid !== governed.gid) {
-			return { layer: { file, role, otherWorkspace: own.name }, rules: [] };
-		}
 		const context = { resolver, workspace: governed.gid, layer };
 		const perRule = await Promise.all(
 			source.file.rules.map((raw, index) => compileRule(raw, index, context)),

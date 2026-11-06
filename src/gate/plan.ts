@@ -159,7 +159,7 @@ interface PlanContext extends PlanInputs {
 		facts: Facts,
 		target: { resource: Resource; verb: "create" | "update" },
 		body?: Readonly<Record<string, unknown>>,
-	): Record<string, unknown>;
+	): Promise<Record<string, unknown>>;
 	/** The violations {@link shape} recorded, shared with the contexts of sub-requests. */
 	readonly violations: readonly ShapeViolation[];
 	/** Plans another operation with this context's policy and loader (used by the Batch API). */
@@ -240,8 +240,8 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 		bodyGids(field) {
 			return gidsOf(request.body[field]);
 		},
-		shape(facts, target, body) {
-			const shaped = shapeBody({ policy, facts }, target, { ...(body ?? request.body) });
+		async shape(facts, target, body) {
+			const shaped = await shapeBody({ policy, facts, loader }, target, body ?? request.body);
 			if (shaped.problems.length > 0) {
 				violations.push({
 					resource: target.resource,

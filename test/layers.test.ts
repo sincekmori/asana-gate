@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import { policyWarnings } from "../src/cli/audit.ts";
-import { compilePolicies, type NameResolver, type PolicySource } from "../src/policy/compile.ts";
+import { compilePolicies, type PolicySource } from "../src/policy/compile.ts";
 import { constraintsFor } from "../src/policy/effective.ts";
 import {
 	type Facts,
@@ -70,18 +70,17 @@ const bounded = compilePolicies(
 	fakeResolver,
 );
 
-/** A resolver that also knows a second workspace. */
-const twoWorkspaces: NameResolver = {
-	...fakeResolver,
-	workspace: (ref) =>
-		ref === "Beta" ? Promise.resolve({ gid: "2", name: "Beta" }) : fakeResolver.workspace(ref),
-};
-
 const confirmers = (policy: Policy, facts: Facts, action: "task:create"): string[] =>
 	(constraintsFor(policy, facts).confirm.get(action) ?? []).map((rule) => ruleLabel(policy, rule));
 
 const appliedTo = (policy: Policy, facts: Facts): string =>
 	JSON.stringify([...(constraintsFor(policy, facts).apply.get("task") ?? [])]);
+
+/** What `check` warns about a policy made of the one project file `text`. */
+async function warningsOf(text: string): Promise<string[]> {
+	const policy = await compilePolicies([source(text, "project")], fakeResolver);
+	return policyWarnings(policy).map((finding) => finding.text);
+}
 
 const describeLayers = (policy: Policy): string[] =>
 	policy.layers.map((layer) => `${layer.role}:${layer.otherWorkspace ?? ""}`);
@@ -150,19 +149,27 @@ describe("policy files bound each other", () => {
 		expect(policy.layers.map((layer) => layer.role)).toStrictEqual(["user", "project", "managed"]);
 	});
 
-	it("keeps a file that names another workspace out of force", async () => {
+	it("keeps a file that names another workspace out of force, even one this token cannot see", async () => {
 		const policy = await compilePolicies(
 			[
 				source(EXAMPLE, "project"),
 				source('version: 1\nworkspace: Beta\nrules: [{ deny: ["*"] }]\n', "user"),
+				source('version: 1\nworkspace: "1"\nrules: [{ allow: ["*"] }]\n', "managed"),
 			],
-			twoWorkspaces,
+			fakeResolver,
 		);
-		expect(describeLayers(policy)).toStrictEqual(["user:Beta", "project:"]);
+		expect(describeLayers(policy)).toStrictEqual(["user:Beta", "project:", "managed:"]);
 		expect(isAllowed(policy, taskIn("21"), "task:update")).toBe(true);
 		expect(policyWarnings(policy).map((finding) => finding.text)).toContain(
 			'user.yaml governs workspace "Beta", not Acme, so it is not in force',
 		);
+	});
+
+	it("warns when the workspace itself cannot be read, which requests starting from it need", async () => {
+		const unreadable =
+			"workspace:read is not allowed at workspace level, so the requests that start from the workspace (workspace-wide lists and searches, typeahead, users) answer 404";
+		await expect(warningsOf(TASK_READ)).resolves.toContain(unreadable);
+		await expect(warningsOf(ALL_READ)).resolves.not.toContain(unreadable);
 	});
 
 	it("insists that the first policy file names its workspace", async () => {

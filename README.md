@@ -184,7 +184,7 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 
 `read` is the prerequisite of every other verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
 
-Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; every other member needs `update`.
+Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`, a section's `insert_before` or `insert_after` needs `section:reorder`; every other member needs `update`.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
 Asana restricts some operations further on its own side, and the gate passes its answer through: audit log events, workspace events, organization exports and graph exports are served only to a service account of an Enterprise-tier organization, task templates, allocations, rates and custom roles take a paid tier, and the early-access Agents endpoints answer only requests that carry the `ai_teammate_actors` flag, which `asana.enable` in the [settings](#configuration) sends.
@@ -194,6 +194,7 @@ Where a policy restricts rather than grants (`deny`, `confirm`, `limit`), groups
 
 `fields` on a rule grants `<resource>:update` limited to the listed members (plus the verb a member stands for, such as `task:complete` for `completed`).
 An update that touches any other member is refused with a 403 naming the member.
+A task's `dependencies` and `dependents`, which their own operations change (`addDependencies`, `removeDependents`, …), may be listed too.
 It applies to updates only; creating an object is governed by `create` alone.
 
 ### Constraints
@@ -231,19 +232,19 @@ rules:
 | `confirm` | actions                    | actions a person must confirm before they run: 428 when nobody can be asked, 403 when they decline                       |
 
 Members are the request members of Asana's API (`name`, `due_on`, `assignee`, `projects`, `tags`, …); a member Asana does not accept for the resource is an error when the policy loads.
-`custom_fields` nests by field name or gid, and the values of an enum field may be option names or gids.
+`custom_fields` nests by field name or gid, and the values of an enum field may be option names or gids; a field named like an operator (`in`, `value`, …) is named by its gid, and operators may not stand beside field names.
 Names in `in`, `not_in` and `apply` values are resolved when the policy loads, like names in `where`: enum option names, tag names (`tags`), users (`me` or an email for `assignee`, `followers`, `owner`), projects and teams; a request may then send either the gid or the name, and `apply` sends the gid.
 
 A requirement combines operators, all of which must hold:
 
-| Operator                         | Meaning                                                                                                                                                         |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `present: true` (or just `true`) | required when creating; cannot be cleared when updating                                                                                                         |
-| `prefix`, `suffix`, `contains`   | the string must start with, end with or contain the text                                                                                                        |
-| `matches`, `not_matches`         | the string must, or must not, match the regular expression                                                                                                      |
-| `min_length`, `max_length`       | bounds on the string's length                                                                                                                                   |
-| `in`, `not_in`                   | the value, or every element of a list, must (not) be one of these; references compare by gid or name                                                            |
-| `min`, `max`                     | bounds on a number, or on a date: `YYYY-MM-DD`, ISO 8601, `today`, `now`, `+7d`, `-1d` (a date-only value such as `due_on` is compared by calendar day, in UTC) |
+| Operator                         | Meaning                                                                                                                                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `present: true` (or just `true`) | required when creating; cannot be cleared when updating                                                                                                                                              |
+| `prefix`, `suffix`, `contains`   | the string must start with, end with or contain the text                                                                                                                                             |
+| `matches`, `not_matches`         | the string must, or must not, match the regular expression                                                                                                                                           |
+| `min_length`, `max_length`       | bounds on the string's length                                                                                                                                                                        |
+| `in`, `not_in`                   | the value, or every element of a list, must (not) be one of these; references compare by gid or name                                                                                                 |
+| `min`, `max`                     | bounds on a number, or on a date: `YYYY-MM-DD`, ISO 8601, `today`, `now`, `+7d`, `-1d` (a date-only value such as `due_on` is compared by calendar day, and a time without an offset is read as UTC) |
 
 An application is a bare value (a default) or an object of operators:
 
@@ -307,8 +308,8 @@ Refusals come back as tool errors whose text is the JSON error body, so agents s
 ### Confirmations
 
 When a rule's `confirm` covers the action, the server asks the person through MCP elicitation before the call runs; nothing reaches Asana until they say yes.
-On a connection that negotiated the 2026-07-28 protocol revision the tool call answers with an `input_required` result carrying a form elicitation and a sealed `requestState`; the client shows it and resends the same call with the answer and the state, which the server checks before executing, so an answer counts only for the question this server asked.
-On an older connection the server sends `elicitation/create` itself and waits for the answer.
+On a connection that negotiated the 2026-07-28 protocol revision the tool call answers with an `input_required` result carrying a form elicitation and a sealed `requestState`; the client shows it and resends the same call with the answer and the state, which the server checks before executing, so an answer counts only for the question this server asked, about the call with these very arguments.
+On an older connection the server sends `elicitation/create` itself and waits up to ten minutes for the answer.
 A declined or cancelled confirmation refuses the call with a 403.
 A client that does not implement elicitation cannot confirm, so the action does not run (428).
 Over the HTTP transport an older client is served one request at a time and cannot receive `elicitation/create`, so confirmations there need a client on the 2026-07-28 revision.
@@ -422,7 +423,7 @@ The Personal Access Token is read from the first of these sources, and `asana-ga
 2. the `token.command` of your own or managed settings;
 3. the file named by `token.file`, else the project's `.asana-gate/token`, else `~/.asana-gate/token`.
 
-`asana-gate token set` saves a token, typed unseen or piped in, to the file read first (`token.file` when set, else the project's `.asana-gate/token`, which it lists in `.asana-gate/.gitignore`); `asana-gate token set --user` saves it to `~/.asana-gate/token`.
+`asana-gate token set` saves a token, typed unseen or piped in, to the file read first (`token.file` when set, else the project's `.asana-gate/token`) and lists that file in `.asana-gate/.gitignore` when it is inside `.asana-gate`; `asana-gate token set --user` saves it to `~/.asana-gate/token`.
 The files are created readable by you alone, and `check` warns when one is not.
 A token file in the project is what hosts without environment variables read, such as Claude Cowork (see [Agents](#agents)).
 
@@ -503,6 +504,7 @@ The Claude Code extension for VS Code reads the same `.mcp.json`.
 ### VS Code, Cursor and other agents
 
 `asana-gate init --agent vscode` and `--agent cursor` (repeatable, and combinable with `claude-code`) do the same for those editors: the server goes into `.vscode/mcp.json` (under `servers`) or `.cursor/mcp.json` (under `mcpServers`), and the skill into `.agents/skills/asana-gate`, the cross-agent directory that VS Code, Cursor and Codex all read.
+An existing file is changed only where the server goes, so its comments stay.
 The command prints the paragraph for `.github/copilot-instructions.md` or `AGENTS.md`.
 Neither editor can be told to keep its agent from reading a file in the project, so with them keep the token out of it: `asana-gate token set --user`, or the environment variable.
 For Codex, the skill copy is enough on the file side; register the server with `codex mcp add asana-gate -- npx -y asana-gate@<version> mcp`.

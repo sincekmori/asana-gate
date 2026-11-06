@@ -54,7 +54,9 @@ async function gated(
 ): Promise<CallToolResult | InputRequiredResult> {
 	try {
 		return toToolResult(
-			await call.gate.execute(request, { confirm: confirmHandlerFor(call.era, call.ctx) }),
+			await call.gate.execute(request, {
+				confirm: confirmHandlerFor(call.era, call.ctx, request),
+			}),
 		);
 	} catch (error) {
 		if (error instanceof ElicitationNeededError) {

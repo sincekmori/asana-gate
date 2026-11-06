@@ -15,7 +15,7 @@ import * as z from "zod";
 
 import { ConfirmationRequiredError, describePending } from "../gate/confirmation.ts";
 import type { PendingConfirmation } from "../gate/errors.ts";
-import type { ConfirmHandler } from "../gate/gate.ts";
+import type { ConfirmHandler, GateRequest } from "../gate/gate.ts";
 
 /** The protocol era a server instance serves (from the SDK's request context). */
 type ProtocolEra = "legacy" | "modern";
@@ -27,7 +27,15 @@ const ConfirmationSchema = z.object({
 	confirm: z.boolean().describe("Confirm the action"),
 });
 
-/** What a confirmation's `requestState` carries: a digest of what the person was asked. */
+/**
+ * How long a person has to answer a confirmation, in seconds: the life of a
+ * modern question's sealed state, and the wait for a legacy answer, which the
+ * SDK would otherwise give up on after its default request timeout of one
+ * minute, too short for a person to notice the prompt, read it and decide.
+ */
+const ANSWER_SECONDS = 600;
+
+/** What a confirmation's `requestState` carries: a digest of what the person was asked, for which call. */
 interface ConfirmState {
 	readonly asked: string;
 }
@@ -40,7 +48,7 @@ interface ConfirmState {
  */
 const STATE = createRequestStateCodec<ConfirmState>({
 	key: randomBytes(32),
-	ttlSeconds: 600,
+	ttlSeconds: ANSWER_SECONDS,
 	bind: (ctx) => ctx.mcpReq.method,
 });
 
@@ -49,8 +57,13 @@ function verifyConfirmState(state: string, ctx: ServerContext): Promise<ConfirmS
 	return STATE.verify(state, ctx);
 }
 
-function digestOf(pending: readonly PendingConfirmation[]): string {
-	return createHash("sha256").update(JSON.stringify(pending)).digest("base64url");
+/**
+ * A digest of a question: the actions to confirm and the request they belong
+ * to, so an answer does not carry over to the same action with other
+ * arguments (another comment on the same task, another body for its update).
+ */
+function digestOf(pending: readonly PendingConfirmation[], request: GateRequest): string {
+	return createHash("sha256").update(JSON.stringify({ pending, request })).digest("base64url");
 }
 
 /** A human sentence describing what is about to happen. */
@@ -73,9 +86,13 @@ class ElicitationNeededError extends Error {
 	}
 }
 
-/** Asks the person (modern era): an `input_required` result whose sealed state names the question. */
-async function ask(pending: readonly PendingConfirmation[], ctx: ServerContext): Promise<never> {
-	const requestState = await STATE.mint({ asked: digestOf(pending) }, ctx);
+/** Asks the person (modern era): an `input_required` result whose sealed state names the question (`asked`). */
+async function ask(
+	pending: readonly PendingConfirmation[],
+	asked: string,
+	ctx: ServerContext,
+): Promise<never> {
+	const requestState = await STATE.mint({ asked }, ctx);
 	const question = inputRequired.elicit({
 		message: describe(pending),
 		requestedSchema: ConfirmationSchema,
@@ -92,35 +109,32 @@ async function askLegacy(
 	try {
 		// The push-style request is the right one for a 2025-era connection; the SDK marks it deprecated only for the modern path.
 		// oxlint-disable-next-line typescript/no-deprecated
-		return await ctx.mcpReq.elicitInput({
-			mode: "form",
-			message: describe(pending),
-			requestedSchema: {
-				type: "object",
-				properties: {
-					confirm: { type: "boolean", title: "Confirm", description: "Confirm the action" },
+		return await ctx.mcpReq.elicitInput(
+			{
+				mode: "form",
+				message: describe(pending),
+				requestedSchema: {
+					type: "object",
+					properties: {
+						confirm: { type: "boolean", title: "Confirm", description: "Confirm the action" },
+					},
+					required: ["confirm"],
 				},
-				required: ["confirm"],
 			},
-		});
+			// A call the client cancels stops waiting, and so cannot run on a late yes.
+			{ timeout: ANSWER_SECONDS * 1000, signal: ctx.mcpReq.signal },
+		);
 	} catch {
-		// No elicitation capability, or the request failed: nobody can be asked.
+		// No elicitation capability, no answer in time, or the request failed: nobody can be asked.
 		throw new ConfirmationRequiredError(pending);
 	}
 }
 
-/** The answer of a retried modern call: `undefined` when the person still has to be asked. */
-function answerOf(
-	pending: readonly PendingConfirmation[],
-	ctx: ServerContext,
-): boolean | undefined {
+/** The answer of a retried modern call to the question `asked`: `undefined` when the person still has to be asked. */
+function answerOf(asked: string, ctx: ServerContext): boolean | undefined {
 	const state = ctx.mcpReq.requestState<ConfirmState>();
 	const response = inputResponse(ctx.mcpReq.inputResponses, CONFIRM_KEY);
-	if (
-		typeof state !== "object" ||
-		state.asked !== digestOf(pending) ||
-		response.kind !== "elicit"
-	) {
+	if (typeof state !== "object" || state.asked !== asked || response.kind !== "elicit") {
 		return undefined;
 	}
 	if (response.action !== "accept") {
@@ -132,20 +146,26 @@ function answerOf(
 }
 
 /**
- * The confirmation handler for one tool call.
+ * The confirmation handler for one tool call, which sends `request`.
  *
  * On a 2026-07-28 (modern) connection the first call answers with an
  * `input_required` result carrying a form elicitation and a sealed
  * `requestState`; the client asks the person and retries the same call with
  * the answer and the state, which this handler then reads (declining or
- * cancelling refuses the call). On a 2025-era (legacy) connection the server
- * sends `elicitation/create` itself and waits for the answer; a client that
- * cannot be asked gets the gate's 428.
+ * cancelling refuses the call; a call with other arguments is asked again).
+ * On a 2025-era (legacy) connection the server sends `elicitation/create`
+ * itself and waits for the answer; a client that cannot be asked gets the
+ * gate's 428.
  */
-function confirmHandlerFor(era: ProtocolEra, ctx: ServerContext): ConfirmHandler {
+function confirmHandlerFor(
+	era: ProtocolEra,
+	ctx: ServerContext,
+	request: GateRequest,
+): ConfirmHandler {
 	return async (pending) => {
 		if (era === "modern") {
-			return answerOf(pending, ctx) ?? ask(pending, ctx);
+			const asked = digestOf(pending, request);
+			return answerOf(asked, ctx) ?? ask(pending, asked, ctx);
 		}
 		const result = await askLegacy(pending, ctx);
 		return result.action === "accept" && result.content?.confirm === true;

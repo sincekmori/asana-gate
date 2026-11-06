@@ -6,6 +6,13 @@ import { describe, expect, it } from "vitest";
 import type { GateRequest } from "../src/gate/gate.ts";
 import { message, setupGate } from "./helpers/gate.ts";
 
+/** Adds task `gid` to section 31 (Backlog of project 21). */
+const addToBacklog = (gid: string): GateRequest => ({
+	method: "POST",
+	path: "/sections/31/addTask",
+	body: { task: gid },
+});
+
 /** Makes task 101 depend on `gid`. */
 const link = (gid: string): GateRequest => ({
 	method: "POST",
@@ -167,5 +174,99 @@ rules:
 		await expect(
 			gate.authorize({ method: "PUT", path: "/projects/21", body: { team: "11", name: "x" } }),
 		).resolves.toBeDefined();
+	});
+});
+
+describe("one change needs the same permission whatever the route", () => {
+	const SUBTREE = `
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { project: "21" }
+    allow: ["task:*"]
+  - where: { subtree: "101" }
+    deny: [task:create]
+`;
+
+	it("keeps a subtask created with projects of its own under its parent's subtree", async () => {
+		const { gate } = await setupGate(SUBTREE);
+		const viaPath = gate.authorize({
+			method: "POST",
+			path: "/tasks/101/subtasks",
+			body: { name: "x" },
+		});
+		const withProjects = gate.authorize({
+			method: "POST",
+			path: "/tasks",
+			body: { name: "x", parent: "101", projects: ["21"] },
+		});
+		await expect(viaPath).rejects.toMatchObject({ status: 403 });
+		await expect(withProjects).rejects.toMatchObject({ status: 403 });
+	});
+
+	it("keeps a subtask added to a project under its parent's subtree", async () => {
+		const { gate } = await setupGate(SUBTREE);
+		await expect(
+			gate.authorize({ method: "POST", path: "/tasks/104/addProject", body: { project: "21" } }),
+		).rejects.toMatchObject({ status: 403 });
+	});
+
+	it("needs create to add a subtask to a section of the project only its parent is in", async () => {
+		const policy = `
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { project: "21" }
+    allow: [task:move]
+`;
+		const { gate } = await setupGate(policy);
+		// Subtask 104 has no project of its own; its parent 101 is in project 21.
+		await expect(gate.authorize(addToBacklog("104"))).rejects.toMatchObject({ status: 403 });
+		await expect(gate.authorize(addToBacklog("101"))).resolves.toBeDefined();
+	});
+
+	it("needs section:reorder to move a section by updating it", async () => {
+		const policy = `
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { project: "21" }
+    allow: [section:update]
+`;
+		const move: GateRequest = {
+			method: "PUT",
+			path: "/sections/32",
+			body: { insert_before: "31" },
+		};
+		const { gate } = await setupGate(policy);
+		await expect(gate.authorize(move)).rejects.toMatchObject({ status: 403 });
+		const { gate: reorder } = await setupGate(policy.replace("section:update", "section:reorder"));
+		await expect(reorder.authorize(move)).resolves.toBeDefined();
+	});
+
+	it("lets a `fields` allowlist grant dependencies and dependents", async () => {
+		const { gate } = await setupGate(`
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { project: "21" }
+    allow: [task:update]
+    fields: { task: [dependencies, dependents] }
+`);
+		await expect(gate.authorize(link("104"))).resolves.toBeDefined();
+		await expect(
+			gate.authorize({
+				method: "POST",
+				path: "/tasks/101/addDependents",
+				body: { dependents: ["104"] },
+			}),
+		).resolves.toBeDefined();
+		await expect(
+			gate.authorize({ method: "PUT", path: "/tasks/101", body: { name: "x" } }),
+		).rejects.toMatchObject({ status: 403 });
 	});
 });

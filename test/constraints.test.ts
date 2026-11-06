@@ -24,6 +24,14 @@ describe("durations and date bounds", () => {
 		expect(resolveDateBound("2026-12-24", NOW)).toBe(Date.UTC(2026, 11, 24));
 		expect(resolveDateBound("whenever", NOW)).toBeUndefined();
 	});
+
+	it("reads a date-time without an offset as UTC, whatever the machine's time zone", () => {
+		expect(resolveDateBound("2026-11-05T09:00", NOW)).toBe(Date.UTC(2026, 10, 5, 9));
+		expect(resolveDateBound("2026-11-05T09:00+09:00", NOW)).toBe(Date.UTC(2026, 10, 5, 0));
+		expect(checkAt("2026-11-05T09:30", { max: "2026-11-05T09:00Z" })).toStrictEqual([
+			"must be on or before 2026-11-05T09:00Z",
+		]);
+	});
 });
 
 describe("checkRequirement", () => {

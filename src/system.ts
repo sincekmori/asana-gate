@@ -16,6 +16,9 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { dirname } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+
+import { applyEdits, type JSONPath, modify } from "jsonc-parser";
 
 import { isObject, type JsonObject, parseJsonc } from "./json.ts";
 import { messageOf } from "./message.ts";
@@ -54,6 +57,11 @@ async function readIfPresent(file: string): Promise<string | undefined> {
 /** The names in a directory, or none when it cannot be listed. */
 function readdirIfPresent(dir: string, options?: { recursive?: boolean }): Promise<string[]> {
 	return readdir(dir, options).catch(() => [] as string[]);
+}
+
+/** `path` with its symbolic links resolved, or as it is when it cannot be (nothing is there). */
+function realOf(path: string): Promise<string> {
+	return realpath(path).catch(() => path);
 }
 
 /** The `stat` of a path, or `undefined` when nothing readable is there. */
@@ -100,7 +108,7 @@ async function privateDir(dir: string): Promise<void> {
  */
 async function privateFile(file: string, text: string): Promise<void> {
 	await privateDir(dirname(file));
-	const target = await realpath(file).catch(() => file);
+	const target = await realOf(file);
 	const temporary = `${target}.${randomUUID()}.tmp`;
 	try {
 		await writeFile(temporary, text, { mode: 0o600 });
@@ -161,8 +169,45 @@ async function ensureLine(file: string, line: string): Promise<void> {
 }
 
 /**
+ * `text` with the members that differ between the values `before` and
+ * `after` rewritten in place, deepest first, so the comments and layout
+ * around them stay; items appended to a list are inserted after the others.
+ */
+function edited(text: string, values: { before: unknown; after: unknown }, path: JSONPath): string {
+	const { before, after } = values;
+	if (isDeepStrictEqual(before, after)) {
+		return text;
+	}
+	let next = text;
+	if (isObject(before) && isObject(after)) {
+		for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+			next = edited(next, { before: before[key], after: after[key] }, [...path, key]);
+		}
+		return next;
+	}
+	const formattingOptions = {
+		insertSpaces: true,
+		tabSize: 2,
+		eol: text.includes("\r\n") ? "\r\n" : "\n",
+	};
+	const appended =
+		Array.isArray(before) &&
+		Array.isArray(after) &&
+		before.every((item: unknown, at) => isDeepStrictEqual(item, after[at]));
+	if (!appended) {
+		return applyEdits(text, modify(text, path, after, { formattingOptions }));
+	}
+	for (let index = before.length; index < after.length; index += 1) {
+		const options = { formattingOptions, isArrayInsertion: true };
+		next = applyEdits(next, modify(next, [...path, index], after[index], options));
+	}
+	return next;
+}
+
+/**
  * Reads a JSON object file (comments and trailing commas allowed; an absent
  * file is empty) and lets `patch` change it; resolves to the write, which
+ * changes only the members `patch` changed, keeping the file's comments, and
  * leaves a file that already says what `patch` wants untouched.
  */
 async function patchedJson(
@@ -175,14 +220,18 @@ async function patchedJson(
 	if (!isObject(document)) {
 		throw fail(`${file} is not a JSON object`);
 	}
-	const before = JSON.stringify(document);
+	const before = structuredClone(document);
 	patch(document);
-	if (text !== undefined && JSON.stringify(document) === before) {
+	if (text !== undefined && isDeepStrictEqual(document, before)) {
 		return () => Promise.resolve();
 	}
+	const updated =
+		text === undefined
+			? `${JSON.stringify(document, null, 2)}\n`
+			: edited(text, { before, after: document }, []);
 	return async () => {
 		await mkdir(dirname(file), { recursive: true });
-		await writeFile(file, `${JSON.stringify(document, null, 2)}\n`);
+		await writeFile(file, updated);
 	};
 }
 
@@ -200,6 +249,7 @@ export {
 	privateFile,
 	readdirIfPresent,
 	readIfPresent,
+	realOf,
 	statIfPresent,
 	unwritable,
 	unwritableFile,

@@ -3,7 +3,7 @@
 
 import * as z from "zod";
 
-import { DurationSchema } from "./durations.ts";
+import { DurationSchema, resolveDateBound } from "./durations.ts";
 
 /** Where editors fetch the policy JSON Schema from. */
 const POLICY_SCHEMA_URL =
@@ -14,6 +14,12 @@ const GID_PATTERN = /^\d+$/u;
 
 /** Whether a reference is a gid rather than a name. */
 const isGid = (ref: string): boolean => GID_PATTERN.test(ref);
+
+/** Whether a named object is the one `ref` names: by gid when `ref` is one, else by name. */
+function matches(ref: string): (item: { readonly gid: string; readonly name: string }) => boolean {
+	const byGid = isGid(ref);
+	return (item) => (byGid ? item.gid === ref : item.name === ref);
+}
 
 const RefSchema = z.string().min(1).describe("A gid or a name");
 const RefArraySchema = z.array(RefSchema).min(1);
@@ -38,7 +44,15 @@ const NamePredicateSchema = z
 	.describe("A predicate on an object's name");
 const ScalarListSchema = z.array(ScalarSchema);
 const BoundSchema = z
-	.union([z.number(), z.string()])
+	.union([
+		z.number(),
+		z
+			.string()
+			.refine(
+				(text) => resolveDateBound(text, new Date()) !== undefined,
+				"a date: YYYY-MM-DD, ISO 8601, today, now, +7d or -1d",
+			),
+	])
 	.describe("A number, or a date: YYYY-MM-DD, ISO 8601, today, now, +7d, -1d");
 const FieldRequirementSchema = z
 	.strictObject({
@@ -232,6 +246,7 @@ type PolicyFile = z.infer<typeof PolicyFileSchema>;
 export {
 	GidSchema,
 	isGid,
+	matches,
 	OPERATOR_KEYS,
 	POLICY_SCHEMA_URL,
 	PolicyFileSchema,

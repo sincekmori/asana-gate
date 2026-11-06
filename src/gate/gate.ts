@@ -449,10 +449,12 @@ class Gate {
 				...(request.multipart === undefined &&
 					WRITE_METHODS.has(request.method) && { data: plan.data ?? context.body }),
 			});
-		const response = await send();
-		for (const stale of plan.invalidate ?? []) {
-			this.loader.invalidate(stale.type, stale.gid);
-		}
+		// A write can reach Asana although its response is an error (a 5xx after the change).
+		const response = await send().finally(() => {
+			for (const stale of plan.invalidate ?? []) {
+				this.loader.invalidate(stale.type, stale.gid);
+			}
+		});
 		const body = await this.postProcess(plan.response, response.body, {
 			...(request.method === "GET" && { refill: send }),
 			...(Number(context.query.limit) > 0 && { limit: Number(context.query.limit) }),

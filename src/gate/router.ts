@@ -75,11 +75,21 @@ function normalizePath(path: string): string {
 	return normalized.length > 1 ? normalized.replace(/\/+$/u, "") : normalized;
 }
 
-/** A path segment, decoded; `undefined` when it is not a well-formed escape of well-formed text. */
+/**
+ * Whether a path parameter can be sent as the one path segment it stands
+ * for: well-formed text, neither empty nor `.` or `..`, which URL resolution
+ * takes as steps through the path (`/users/.` is sent as `/users/`) even
+ * when they are percent-encoded.
+ */
+function isPathSegment(value: string): boolean {
+	return value !== "" && value !== "." && value !== ".." && value.isWellFormed();
+}
+
+/** A path segment, decoded; `undefined` when it is not a well-formed escape of a {@link isPathSegment} value. */
 function decoded(segment: string): string | undefined {
 	try {
 		const value = decodeURIComponent(segment);
-		return value.isWellFormed() ? value : undefined;
+		return isPathSegment(value) ? value : undefined;
 	} catch {
 		return undefined;
 	}
@@ -95,7 +105,7 @@ function matchRoute(method: HttpMethod, path: string): RouteMatch | undefined {
 			for (const [i, name] of route.params.entries()) {
 				const value = decoded(match[i + 1] ?? "");
 				if (value === undefined) {
-					// A malformed escape or a lone surrogate names nothing: no route, like Asana's 404.
+					// A malformed escape, a lone surrogate or a dot segment names nothing: no route, like Asana's 404.
 					return undefined;
 				}
 				params[name] = value;
@@ -113,5 +123,5 @@ function fillPath(template: string, params: Readonly<Record<string, string | und
 	);
 }
 
-export { fillPath, isHttpMethod, matchRoute, normalizePath };
+export { fillPath, isHttpMethod, isPathSegment, matchRoute, normalizePath };
 export type { RouteMatch };

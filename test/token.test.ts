@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { ignoreByGit } from "../src/cli/token-command.ts";
 import { tokenOf, tokenPlaces, tokenText } from "../src/cli/token.ts";
 import { type LoadedSettings, loadSettings } from "../src/settings/load.ts";
 import { ensureLine, privateFile } from "../src/system.ts";
@@ -135,6 +136,24 @@ describe("token files", () => {
 		const refused = tokenOf(await load(project, home));
 		await expect(refused).rejects.toThrow(`${file}: the token contains a control character`);
 		await expect(refused).rejects.not.toThrow(/sec.ret/u);
+	});
+
+	it("keeps the token file token.file names in the project out of git by its own name", async () => {
+		const { home, project } = await scaffold();
+		await writeFile(join(project, ".asana-gate", "settings.yaml"), "token: { file: asana-pat }\n");
+		const loaded = await load(project, home);
+		const file = join(project, ".asana-gate", "asana-pat");
+		expect(tokenPlaces(loaded)[0]).toMatchObject({ file });
+		// One after another: both add a line to the same .gitignore.
+		const named = await ignoreByGit(loaded, file);
+		const nested = await ignoreByGit(loaded, join(project, ".asana-gate", "secrets", "asana"));
+		const elsewhere = await Promise.all(
+			[join(project, "asana-token"), join(home, "token")].map((path) => ignoreByGit(loaded, path)),
+		);
+		expect([named, nested, ...elsewhere]).toStrictEqual([true, true, false, false]);
+		await expect(readFile(join(project, ".asana-gate", ".gitignore"), "utf8")).resolves.toBe(
+			"asana-pat\nsecrets/asana\n",
+		);
 	});
 
 	it("does not add a line a CRLF file already has", async () => {

@@ -147,6 +147,7 @@ const VERB_TIERS = {
 const FIELD_VERBS: Partial<Record<Resource, Readonly<Record<string, Verb>>>> = {
 	task: { completed: "complete", assignee: "assign" },
 	project: { archived: "archive" },
+	section: { insert_before: "reorder", insert_after: "reorder" },
 };
 
 /**

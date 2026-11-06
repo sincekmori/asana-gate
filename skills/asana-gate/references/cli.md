@@ -98,7 +98,7 @@ The Personal Access Token is read from the first of these sources, and `asana-ga
 2. the `token.command` of your own or managed settings;
 3. the file named by `token.file`, else the project's `.asana-gate/token`, else `~/.asana-gate/token`.
 
-`asana-gate token set` saves a token, typed unseen or piped in, to the file read first (`token.file` when set, else the project's `.asana-gate/token`, which it lists in `.asana-gate/.gitignore`); `asana-gate token set --user` saves it to `~/.asana-gate/token`.
+`asana-gate token set` saves a token, typed unseen or piped in, to the file read first (`token.file` when set, else the project's `.asana-gate/token`) and lists that file in `.asana-gate/.gitignore` when it is inside `.asana-gate`; `asana-gate token set --user` saves it to `~/.asana-gate/token`.
 The files are created readable by you alone, and `check` warns when one is not.
 A token file in the project is what hosts without environment variables read, such as Claude Cowork (see [Agents](#agents)).
 

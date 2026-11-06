@@ -15,8 +15,8 @@ Refusals come back as tool errors whose text is the JSON error body, so agents s
 ### Confirmations
 
 When a rule's `confirm` covers the action, the server asks the person through MCP elicitation before the call runs; nothing reaches Asana until they say yes.
-On a connection that negotiated the 2026-07-28 protocol revision the tool call answers with an `input_required` result carrying a form elicitation and a sealed `requestState`; the client shows it and resends the same call with the answer and the state, which the server checks before executing, so an answer counts only for the question this server asked.
-On an older connection the server sends `elicitation/create` itself and waits for the answer.
+On a connection that negotiated the 2026-07-28 protocol revision the tool call answers with an `input_required` result carrying a form elicitation and a sealed `requestState`; the client shows it and resends the same call with the answer and the state, which the server checks before executing, so an answer counts only for the question this server asked, about the call with these very arguments.
+On an older connection the server sends `elicitation/create` itself and waits up to ten minutes for the answer.
 A declined or cancelled confirmation refuses the call with a 403.
 A client that does not implement elicitation cannot confirm, so the action does not run (428).
 Over the HTTP transport an older client is served one request at a time and cannot receive `elicitation/create`, so confirmations there need a client on the 2026-07-28 revision.

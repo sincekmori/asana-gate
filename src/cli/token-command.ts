@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { parseArgs } from "node:util";
 
 import type { LoadedSettings } from "../settings/load.ts";
-import { PROJECT_DIR, TOKEN_FILE } from "../settings/paths.ts";
+import { PROJECT_DIR } from "../settings/paths.ts";
 import { ensureLine, errnoOf, privateFile } from "../system.ts";
 import { loadCliSettings, TOKEN_OPTIONS, UsageError, usageRows } from "./context.ts";
 import { identify, readSecret } from "./identity.ts";
@@ -61,6 +61,24 @@ async function showStatus(loaded: LoadedSettings): Promise<void> {
 	}
 }
 
+/**
+ * Keeps a token file inside the project's .asana-gate out of git: its
+ * .gitignore gets a line naming the file, whatever token.file calls it.
+ * Resolves to whether it did; a token file anywhere else is left alone.
+ */
+async function ignoreByGit(loaded: LoadedSettings, file: string): Promise<boolean> {
+	if (loaded.projectDir === undefined) {
+		return false;
+	}
+	const dir = join(loaded.projectDir, PROJECT_DIR);
+	const path = relative(dir, file);
+	if (path === "" || path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
+		return false;
+	}
+	await ensureLine(join(dir, ".gitignore"), path.split(sep).join("/"));
+	return true;
+}
+
 async function setToken(loaded: LoadedSettings, user: boolean): Promise<void> {
 	const file = tokenFileOf(loaded, user);
 	const token = await readSecret("Asana Personal Access Token (not shown): ");
@@ -69,12 +87,8 @@ async function setToken(loaded: LoadedSettings, user: boolean): Promise<void> {
 	}
 	const owner = await identify(token);
 	await privateFile(file, `${token}\n`);
-	const inProject =
-		loaded.projectDir !== undefined && dirname(file) === join(loaded.projectDir, PROJECT_DIR);
-	if (inProject) {
-		await ensureLine(join(dirname(file), ".gitignore"), TOKEN_FILE);
-	}
-	const note = inProject ? ` (ignored by git through ${PROJECT_DIR}/.gitignore)` : "";
+	const ignored = await ignoreByGit(loaded, file);
+	const note = ignored ? ` (ignored by git through ${PROJECT_DIR}/.gitignore)` : "";
 	console.log(`saved the token of ${owner} to ${file}${note}`);
 }
 
@@ -124,4 +138,4 @@ async function runToken(argv: readonly string[]): Promise<number> {
 	}
 }
 
-export { runToken };
+export { ignoreByGit, runToken };

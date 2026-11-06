@@ -46,4 +46,11 @@ describe("matchRoute", () => {
 		expect(matchRoute("GET", "/nonexistent")).toBeUndefined();
 		expect(matchRoute("PATCH", "/tasks/1")).toBeUndefined();
 	});
+
+	it("matches no gid that URL resolution would read as a step through the path", () => {
+		for (const gid of [".", "..", "%2E", "%2e%2E"]) {
+			expect(matchRoute("GET", `/users/${gid}`)).toBeUndefined();
+		}
+		expect(matchRoute("GET", "/users/a.b")).toMatchObject({ params: { user_gid: "a.b" } });
+	});
 });

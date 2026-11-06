@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { fakeResolver } from "./helpers/fake-resolver.ts";
 import { data, message, setupGate } from "./helpers/gate.ts";
 
 const POLICY = `
@@ -221,5 +222,57 @@ rules:
 		await expect(gate.execute({ method: "DELETE", path: `/tasks/${gid}` })).resolves.toMatchObject({
 			status: 200,
 		});
+	});
+});
+
+describe("users in constraints and scopes", () => {
+	const ASSIGNED_TO_ME = `
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { project: "21" }
+    allow: [task:create]
+    require: { task: { assignee: { in: [me] } } }
+`;
+
+	it("compares an assignee by the user it names, however the request names them", async () => {
+		const { gate } = await setupGate(ASSIGNED_TO_ME);
+		const create = (assignee: string): Promise<{ status: number }> =>
+			gate.execute({
+				method: "POST",
+				path: "/tasks",
+				body: { name: "x", projects: ["21"], assignee },
+			});
+		const responses = await Promise.all(
+			["me", "51", "me@acme.test", "bob@acme.test", "52"].map((who) => create(who)),
+		);
+		expect(responses.map((response) => response.status)).toStrictEqual([201, 201, 201, 400, 400]);
+	});
+
+	it("does not take an unassigned task for the token's user when that user has no email", async () => {
+		const policy = `
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { project: "21" }
+    allow: [task:create]
+  - where: { project: "21", assignee: me }
+    deny: [task:create]
+`;
+		const { gate } = await setupGate(policy, {
+			resolver: { ...fakeResolver, me: () => Promise.resolve({ gid: "51", name: "Me" }) },
+		});
+		await expect(
+			gate.authorize({ method: "POST", path: "/tasks", body: { name: "x", projects: ["21"] } }),
+		).resolves.toBeDefined();
+		await expect(
+			gate.authorize({
+				method: "POST",
+				path: "/tasks",
+				body: { name: "x", projects: ["21"], assignee: "me" },
+			}),
+		).rejects.toMatchObject({ status: 403 });
 	});
 });

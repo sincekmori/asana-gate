@@ -4,7 +4,7 @@
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { envValue, firstWhere, isDirectory } from "../system.ts";
+import { envValue, firstWhere, isDirectory, realOf } from "../system.ts";
 
 /** The directory name a project's asana-gate files live in. */
 const PROJECT_DIR = ".asana-gate";
@@ -54,23 +54,24 @@ function resolveFrom(base: string, path: string): string {
 /**
  * The nearest directory, from `cwd` upwards, that holds a `.asana-gate`
  * directory: the project. The user's own asana-gate home (`~/.asana-gate`,
- * or `home`) is not a project's, so the home directory never is one.
+ * or `home`) is not a project's, so the home directory never is one, also
+ * when a symbolic link leads to it (a linked `$HOME` against a working
+ * directory whose links are resolved).
  */
-function findProjectDir(cwd: string, home?: string): Promise<string | undefined> {
-	const own = new Set([
-		join(homedir(), PROJECT_DIR),
-		...(home === undefined ? [] : [resolve(home)]),
-	]);
+async function findProjectDir(cwd: string, home?: string): Promise<string | undefined> {
+	const homes = [join(homedir(), PROJECT_DIR), ...(home === undefined ? [] : [resolve(home)])];
+	const own = new Set(await Promise.all(homes.map((dir) => realOf(dir))));
 	const ancestors: string[] = [];
 	for (let dir = resolve(cwd); ; dir = dirname(dir)) {
-		if (!own.has(join(dir, PROJECT_DIR))) {
-			ancestors.push(dir);
-		}
+		ancestors.push(dir);
 		if (dirname(dir) === dir) {
 			break;
 		}
 	}
-	return firstWhere(ancestors, (dir) => isDirectory(join(dir, PROJECT_DIR)));
+	return firstWhere(ancestors, async (dir) => {
+		const candidate = join(dir, PROJECT_DIR);
+		return (await isDirectory(candidate)) && !own.has(await realOf(candidate));
+	});
 }
 
 export {

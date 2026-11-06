@@ -204,14 +204,15 @@ function createTask(
 	policy: Policy,
 ): GateRequest {
 	const [first] = projects ?? [];
+	// Without a project or a parent, Asana needs the workspace (an empty `projects` names none).
+	const placed = first !== undefined || parent !== undefined;
 	return send("POST", "/tasks", {
 		...fields,
 		projects,
 		parent,
 		memberships:
 			section !== undefined && first !== undefined ? [{ project: first, section }] : undefined,
-		workspace:
-			projects === undefined && parent === undefined ? (workspace ?? policy.workspace) : workspace,
+		workspace: placed ? workspace : (workspace ?? policy.workspace),
 	});
 }
 
@@ -827,7 +828,7 @@ const TOOLS: readonly AnyToolSpec[] = [
 		description: "Reads a user by gid or email.",
 		readOnly: true,
 		input: z.object({
-			user: z.string().describe('User gid, email or "me"'),
+			user: z.string().min(1).describe('User gid, email or "me"'),
 			opt_fields: OptFields,
 		}),
 		request: (args, policy) =>

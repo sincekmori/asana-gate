@@ -30,19 +30,26 @@ function failedActions(reason: unknown, count: number): unknown[] {
 }
 
 /**
- * The results of every chunk in order. A chunk that failed while others ran
- * answers one result per action, so the caller sees which actions ran
- * instead of one error for all of them.
+ * The results of every chunk in order, exactly one per action. A chunk that
+ * failed while others ran answers one result per action, so the caller sees
+ * which actions ran instead of one error for all of them; a chunk answered
+ * with fewer results than actions (or none) fills the rest with failures, so
+ * a later chunk's results never shift onto earlier actions.
  */
 function joinedResults(
 	settled: readonly PromiseSettledResult<{ readonly data: unknown }>[],
 	chunks: readonly (readonly unknown[])[],
 ): unknown[] {
 	return settled.flatMap((result, index): unknown[] => {
-		if (result.status === "fulfilled") {
-			return Array.isArray(result.value.data) ? (result.value.data as unknown[]) : [];
+		const count = chunks[index]?.length ?? 0;
+		if (result.status === "rejected") {
+			return failedActions(result.reason, count);
 		}
-		return failedActions(result.reason, chunks[index]?.length ?? 0);
+		const data: unknown[] = Array.isArray(result.value.data)
+			? result.value.data.slice(0, count)
+			: [];
+		const missing = new Error("Asana returned no result for this action");
+		return [...data, ...failedActions(missing, count - data.length)];
 	});
 }
 

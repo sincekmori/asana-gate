@@ -4,7 +4,13 @@
 import { EXPLICIT_ONLY_ACTIONS, verbOf } from "../catalog/resources.ts";
 import type { FactsLoader, Loaded } from "../gate/facts.ts";
 import { messageOf } from "../log.ts";
-import { type Branch, grantedActions, isFilterRule } from "../policy/evaluate.ts";
+import {
+	type Branch,
+	grantedActions,
+	isFilterRule,
+	isVisible,
+	workspaceFacts,
+} from "../policy/evaluate.ts";
 import { type Reference, referencesOf } from "../policy/references.ts";
 import { type CompiledRule, type Policy, ruleLabel } from "../policy/types.ts";
 import { exposureOf, statIfPresent, unwritableFile } from "../system.ts";
@@ -43,6 +49,13 @@ function policyWarnings(policy: Policy): Finding[] {
 				),
 			);
 		}
+	}
+	if (granted.size > 0 && !isVisible(policy, workspaceFacts(policy.workspace), "workspace")) {
+		findings.push(
+			warning(
+				"workspace:read is not allowed at workspace level, so the requests that start from the workspace (workspace-wide lists and searches, typeahead, users) answer 404",
+			),
+		);
 	}
 	if (granted.size === 0) {
 		findings.push(

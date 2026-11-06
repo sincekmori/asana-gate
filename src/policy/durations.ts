@@ -46,8 +46,21 @@ const DurationSchema = z
 const RELATIVE_DATE = /^(?<sign>[+-])(?<amount>\d+)(?<unit>d|w|h|m)$/u;
 
 /**
+ * The timestamp of a date or date-time, `NaN` when it is none. One without an
+ * offset is UTC, as a date alone already is: `Date.parse` would read a
+ * date-time like `2026-11-05T09:00` in the machine's time zone, so the gate
+ * would judge it differently on different machines. Whatever reads as a
+ * valid instant with `Z` appended had no offset of its own.
+ */
+function parseInstant(text: string): number {
+	const utc = Date.parse(`${text}Z`);
+	return Number.isNaN(utc) ? Date.parse(text) : utc;
+}
+
+/**
  * Resolves a date bound: `today` / `now`, `+7d` / `-1d` (relative to now),
- * or an absolute `YYYY-MM-DD` / ISO 8601 value. Resolves to a timestamp.
+ * or an absolute `YYYY-MM-DD` / ISO 8601 value (UTC without an offset).
+ * Resolves to a timestamp.
  */
 function resolveDateBound(value: string, now: Date): number | undefined {
 	const text = value.trim();
@@ -62,8 +75,8 @@ function resolveDateBound(value: string, now: Date): number | undefined {
 		const amount = Number(relative.groups.amount) * (UNIT_MS[relative.groups.unit ?? "d"] ?? 0);
 		return now.getTime() + (relative.groups.sign === "-" ? -amount : amount);
 	}
-	const absolute = Date.parse(text);
+	const absolute = parseInstant(text);
 	return Number.isNaN(absolute) ? undefined : absolute;
 }
 
-export { DurationSchema, durationMs, parseDuration, resolveDateBound };
+export { DurationSchema, durationMs, parseDuration, parseInstant, resolveDateBound };

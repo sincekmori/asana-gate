@@ -113,7 +113,7 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 
 `read` is the prerequisite of every other verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
 
-Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; every other member needs `update`.
+Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`, a section's `insert_before` or `insert_after` needs `section:reorder`; every other member needs `update`.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
 Asana restricts some operations further on its own side, and the gate passes its answer through: audit log events, workspace events, organization exports and graph exports are served only to a service account of an Enterprise-tier organization, task templates, allocations, rates and custom roles take a paid tier, and the early-access Agents endpoints answer only requests that carry the `ai_teammate_actors` flag, which `asana.enable` in the [settings](#configuration) sends.
@@ -123,6 +123,7 @@ Where a policy restricts rather than grants (`deny`, `confirm`, `limit`), groups
 
 `fields` on a rule grants `<resource>:update` limited to the listed members (plus the verb a member stands for, such as `task:complete` for `completed`).
 An update that touches any other member is refused with a 403 naming the member.
+A task's `dependencies` and `dependents`, which their own operations change (`addDependencies`, `removeDependents`, …), may be listed too.
 It applies to updates only; creating an object is governed by `create` alone.
 
 ### Constraints
@@ -160,19 +161,19 @@ rules:
 | `confirm` | actions                    | actions a person must confirm before they run: 428 when nobody can be asked, 403 when they decline                       |
 
 Members are the request members of Asana's API (`name`, `due_on`, `assignee`, `projects`, `tags`, …); a member Asana does not accept for the resource is an error when the policy loads.
-`custom_fields` nests by field name or gid, and the values of an enum field may be option names or gids.
+`custom_fields` nests by field name or gid, and the values of an enum field may be option names or gids; a field named like an operator (`in`, `value`, …) is named by its gid, and operators may not stand beside field names.
 Names in `in`, `not_in` and `apply` values are resolved when the policy loads, like names in `where`: enum option names, tag names (`tags`), users (`me` or an email for `assignee`, `followers`, `owner`), projects and teams; a request may then send either the gid or the name, and `apply` sends the gid.
 
 A requirement combines operators, all of which must hold:
 
-| Operator                         | Meaning                                                                                                                                                         |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `present: true` (or just `true`) | required when creating; cannot be cleared when updating                                                                                                         |
-| `prefix`, `suffix`, `contains`   | the string must start with, end with or contain the text                                                                                                        |
-| `matches`, `not_matches`         | the string must, or must not, match the regular expression                                                                                                      |
-| `min_length`, `max_length`       | bounds on the string's length                                                                                                                                   |
-| `in`, `not_in`                   | the value, or every element of a list, must (not) be one of these; references compare by gid or name                                                            |
-| `min`, `max`                     | bounds on a number, or on a date: `YYYY-MM-DD`, ISO 8601, `today`, `now`, `+7d`, `-1d` (a date-only value such as `due_on` is compared by calendar day, in UTC) |
+| Operator                         | Meaning                                                                                                                                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `present: true` (or just `true`) | required when creating; cannot be cleared when updating                                                                                                                                              |
+| `prefix`, `suffix`, `contains`   | the string must start with, end with or contain the text                                                                                                                                             |
+| `matches`, `not_matches`         | the string must, or must not, match the regular expression                                                                                                                                           |
+| `min_length`, `max_length`       | bounds on the string's length                                                                                                                                                                        |
+| `in`, `not_in`                   | the value, or every element of a list, must (not) be one of these; references compare by gid or name                                                                                                 |
+| `min`, `max`                     | bounds on a number, or on a date: `YYYY-MM-DD`, ISO 8601, `today`, `now`, `+7d`, `-1d` (a date-only value such as `due_on` is compared by calendar day, and a time without an offset is read as UTC) |
 
 An application is a bare value (a default) or an object of operators:
 
