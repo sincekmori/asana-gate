@@ -78,7 +78,6 @@ function unresolved(error: unknown): undefined {
 	}
 	console.log(`problem:    ${error.message}`);
 	console.log("1 problems, 0 warnings");
-	return undefined;
 }
 
 async function runCheck(argv: readonly string[], version: string): Promise<number> {

@@ -185,19 +185,19 @@ class AsanaClient {
 		query?: Record<string, QueryValue>,
 		options?: { limit?: number; signal?: AbortSignal },
 	): AsyncGenerator<T, void, undefined> {
-		let offset: string | undefined = undefined;
-		do {
+		let page: Record<string, QueryValue> | undefined = { ...query };
+		while (page !== undefined) {
 			// Each page names the next, so the pages are fetched one after another.
 			// oxlint-disable-next-line no-await-in-loop
 			const response: AsanaResponse<T[]> = await this.request<T[]>({
 				method: "GET",
 				path,
-				query: { ...query, limit: options?.limit ?? 100, ...(offset !== undefined && { offset }) },
+				query: { ...page, limit: options?.limit ?? 100 },
 				signal: options?.signal,
 			});
 			yield* response.data;
-			offset = response.nextPage?.offset;
-		} while (offset !== undefined);
+			page = response.nextPage ? { ...page, offset: response.nextPage.offset } : undefined;
+		}
 	}
 
 	private async attempt<T>(request: AsanaRequest, attempt: number): Promise<AsanaResponse<T>> {
