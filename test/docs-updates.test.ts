@@ -1,8 +1,9 @@
 // Copyright 2026 Shinsuke Mori
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import textOf from "../scripts/docs-updates/fetch.ts";
 import { pagesOf, render, titleOf, updatedAtOf } from "../scripts/docs-updates/parse.ts";
 
 const INDEX = `# Asana Docs
@@ -25,6 +26,32 @@ Returns the compact records of agents.
 
 # OpenAPI definition
 `;
+
+/** A fetch that answers each call with the next status, the last one from then on. */
+const answering = (...statuses: number[]): ReturnType<typeof vi.fn<typeof globalThis.fetch>> => {
+	const queue = [...statuses];
+	return vi.fn<typeof globalThis.fetch>(() => {
+		const status = queue.length > 1 ? queue.shift() : queue[0];
+		return Promise.resolve(new Response("page", { status, headers: { "retry-after": "0" } }));
+	});
+};
+
+describe("reading a docs page", () => {
+	it("tries again when the site limits the rate or fails, and gives up on anything else", async () => {
+		const limited = answering(429, 503, 200);
+		await expect(textOf("https://x/a.md", limited)).resolves.toBe("page");
+		expect(limited).toHaveBeenCalledTimes(3);
+		const missing = answering(404);
+		await expect(textOf("https://x/b.md", missing)).rejects.toThrow("HTTP 404");
+		expect(missing).toHaveBeenCalledOnce();
+	});
+
+	it("stops after a bounded number of tries", async () => {
+		const always = answering(429);
+		await expect(textOf("https://x/c.md", always)).rejects.toThrow("HTTP 429");
+		expect(always).toHaveBeenCalledTimes(6);
+	});
+});
 
 describe("docs updates", () => {
 	it("lists the pages an index links to, once each, on this site only", () => {

@@ -14,22 +14,14 @@ import { parseArgs } from "node:util";
 
 import { Semaphore } from "../src/asana/semaphore.ts";
 import { messageOf } from "../src/message.ts";
+import textOf from "./docs-updates/fetch.ts";
 import { type Page, pagesOf, render, titleOf, updatedAtOf } from "./docs-updates/parse.ts";
 
 const INDEX = "https://developers.asana.com/llms.txt";
-const USER_AGENT = "asana-gate docs check (+https://github.com/sincekmori/asana-gate)";
 const DAY_MS = 86_400_000;
 
-/** Pages in flight at once. */
-const inFlight = new Semaphore(8);
-
-async function textOf(url: string): Promise<string> {
-	const response = await fetch(url, { headers: { "user-agent": USER_AGENT } });
-	if (!response.ok) {
-		throw new Error(`HTTP ${response.status}`);
-	}
-	return response.text();
-}
+/** Pages in flight at once: few, since the site limits how fast it is read. */
+const inFlight = new Semaphore(4);
 
 /** A page with its update time; one that cannot be read is reported as such rather than silently missing. */
 async function pageOf(url: string): Promise<Page> {
