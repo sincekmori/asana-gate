@@ -20,6 +20,8 @@ jobs:
       contents: write # create the Version Packages PR / tags
       pull-requests: write # open the Version Packages PR
       id-token: write # npm trusted publishing: pnpm publish exchanges the OIDC token itself (no NPM_TOKEN)
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
     steps:
       - uses: actions/checkout@v7
 
@@ -47,6 +49,7 @@ jobs:
       # The action publishes no moving major tag (no `v2`), so the exact tag is
       # pinned and Dependabot moves it.
       - name: Create Version PR or publish to npm
+        id: changesets
         uses: changesets/action@v2.1.2
         with:
           version-script: pnpm run version
@@ -56,3 +59,57 @@ jobs:
           # v2 reads the token from this input only — a GITHUB_TOKEN env var is
           # not a substitute.
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Lists the version just published in the MCP Registry
+  # (registry.modelcontextprotocol.io) from server.json, which `pnpm version`
+  # regenerates with every bump. The registry takes `mcpName` in the published
+  # package.json and a GitHub OIDC login as proof of ownership, so there is no
+  # token. A job of its own, so a failed registration re-runs without
+  # publishing to npm again.
+  register:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC login to the MCP Registry
+    env:
+      # Pinned and verified, as the registry's publishing guide asks; moved by hand.
+      MCP_PUBLISHER_VERSION: v1.8.7
+    steps:
+      - uses: actions/checkout@v7
+
+      # npm serves a new version some time after the publish returns, and the
+      # registry reads `mcpName` from the package npm serves.
+      - name: Wait for npm to serve this version
+        run: |
+          version="$(jq -r .version package.json)"
+          for _ in $(seq 1 60); do
+            if curl -fs -o /dev/null "https://registry.npmjs.org/asana-gate/${version}"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "asana-gate@${version} is still not on npm after 10 minutes" >&2
+          exit 1
+
+      - uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+
+      - run: ./mcp-publisher login github-oidc
+
+      - run: ./mcp-publisher publish

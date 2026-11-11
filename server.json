@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sincekmori/asana-gate",
+  "title": "asana-gate",
+  "description": "Declarative access-control policy in front of the Asana API, served to AI agents over MCP.",
+  "repository": {
+    "url": "https://github.com/sincekmori/asana-gate",
+    "source": "github"
+  },
+  "version": "0.3.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "asana-gate",
+      "version": "0.3.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "ASANA_ACCESS_TOKEN",
+          "description": "The Asana Personal Access Token the gate works with; not needed when one is saved with `asana-gate token set`.",
+          "isSecret": true
+        },
+        {
+          "name": "ASANA_GATE_POLICY",
+          "description": "The policy file to enforce; by default the project's .asana-gate/policy.yaml, else ~/.asana-gate/policy.yaml.",
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

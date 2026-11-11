@@ -59,9 +59,10 @@
     "sync-openapi": "node scripts/sync-openapi.ts",
     "docs-updates": "node scripts/docs-updates.ts",
     "changeset": "changeset",
-    "version": "changeset version && pnpm generate-skill",
+    "version": "changeset version && pnpm generate-server && pnpm generate-skill",
     "release": "changeset publish",
     "generate-skill": "node scripts/generate-skill.ts",
+    "generate-server": "node scripts/generate-server.ts",
     "check:skill": "skills-ref validate skills/asana-gate"
   },
   "dependencies": {
@@ -88,5 +89,6 @@
   "engines": {
     "node": ">=24",
     "pnpm": ">=12"
-  }
+  },
+  "mcpName": "io.github.sincekmori/asana-gate"
 }

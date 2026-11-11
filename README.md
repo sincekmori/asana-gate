@@ -29,6 +29,7 @@ npm install -g asana-gate
 
 Node.js 24 or later is required.
 `npx asana-gate` works too.
+The server is listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.sincekmori/asana-gate`, for the clients and catalogs that read it.
 
 ## Quick start
 
@@ -570,6 +571,7 @@ pnpm sync-openapi   # refresh the OpenAPI snapshots
 pnpm docs-updates   # list the pages of developers.asana.com updated in the last week
 pnpm generate-schema # regenerate schema.json and settings.schema.json
 pnpm generate-skill  # regenerate the skill from the README and the tool definitions
+pnpm generate-server # regenerate server.json, the MCP Registry entry
 ```
 
 Versioning and publishing use [Changesets](https://github.com/changesets/changesets): `pnpm changeset` describes a change, and merging to `main` opens a Version Packages PR that publishes to npm when merged.
