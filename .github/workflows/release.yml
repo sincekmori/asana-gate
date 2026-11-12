@@ -11,10 +11,10 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # The job runs in the `release` environment and the npm trusted publisher
-    # names it: with the environment in the OIDC subject, npm matches the
-    # publisher for a repository created after 2026-07-15 (immutable subject
-    # claims), which it does not without one (npm/cli#9969).
+    # The npm trusted publisher of asana-gate names this workflow and the
+    # `release` environment, and npm has no other way to tell the jobs of a
+    # workflow apart: running in the environment is what lets this job, and
+    # no other, publish.
     environment: release
     permissions:
       contents: write # create the Version Packages PR / tags
