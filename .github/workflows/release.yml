@@ -65,12 +65,14 @@ jobs:
   # regenerates with every bump. The registry takes `mcpName` in the published
   # package.json and a GitHub OIDC login as proof of ownership, so there is no
   # token. A job of its own, so a failed registration re-runs without
-  # publishing to npm again.
+  # publishing to npm again, and outside the `release` environment on purpose:
+  # npm's trusted publisher accepts any job of this workflow that runs in that
+  # environment, and this job runs a downloaded program, so it is left unable
+  # to publish to npm (the registry's login reads the repository owner alone).
   register:
     needs: release
     if: needs.release.outputs.published == 'true'
     runs-on: ubuntu-latest
-    environment: release
     permissions:
       contents: read
       id-token: write # GitHub OIDC login to the MCP Registry
