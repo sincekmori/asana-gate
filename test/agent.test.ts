@@ -1,7 +1,7 @@
 // Copyright 2026 Shinsuke Mori
 // SPDX-License-Identifier: Apache-2.0
 
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,19 +28,23 @@ const readJson = async (file: string): Promise<Record<string, unknown>> =>
 	>;
 
 describe("agent wiring", () => {
-	it("writes the skill copies, the server entries and the token rule", async () => {
-		const project = await wired();
+	it("writes the skill copies, the one server entry both agents read and the token rule", async () => {
+		const project = await mkdtemp(join(tmpdir(), "asana-gate-agent-"));
+		const agents = agentsNamed(["claude-code", "vscode"]);
+		const { written } = await wireAgents(project, agents, version);
 		const mcp = (await readJson(join(project, ".mcp.json"))) as {
 			mcpServers: { "asana-gate": { args: string[] } };
-		};
-		const vscode = (await readJson(join(project, ".vscode", "mcp.json"))) as {
-			servers: Record<string, unknown>;
 		};
 		const settings = (await readJson(join(project, ".claude", "settings.json"))) as {
 			permissions: { deny: string[] };
 		};
+		expect(written).toStrictEqual([
+			join(".claude", "skills", "asana-gate"),
+			join(".agents", "skills", "asana-gate"),
+			".mcp.json",
+			join(".claude", "settings.json"),
+		]);
 		expect(mcp.mcpServers["asana-gate"].args).toContain(`asana-gate@${version}`);
-		expect(Object.keys(vscode.servers)).toStrictEqual(["asana-gate"]);
 		expect(settings.permissions.deny).toStrictEqual(["Read(./.asana-gate/token)"]);
 		const copy = await readFile(
 			join(project, ".agents", "skills", "asana-gate", "SKILL.md"),
@@ -80,18 +84,17 @@ describe("agent wiring", () => {
 		]);
 	});
 
-	it("wires and audits a VS Code mcp.json written with comments and trailing commas", async () => {
+	it("wires and audits a .mcp.json written with comments and trailing commas", async () => {
 		const project = await mkdtemp(join(tmpdir(), "asana-gate-agent-"));
-		await mkdir(join(project, ".vscode"));
-		const file = join(project, ".vscode", "mcp.json");
+		const file = join(project, ".mcp.json");
 		await writeFile(
 			file,
-			'{\n  // mine\n  "servers": { "other": { "url": "http://x/*y*/" }, },\n  /* end */\n}\n',
+			'{\n  // mine\n  "mcpServers": { "other": { "url": "http://x/*y*/" }, },\n  /* end */\n}\n',
 		);
 		await wireAgents(project, agentsNamed(["vscode"]), version);
-		const document = (await readJson(file)) as { servers: Record<string, unknown> };
-		expect(Object.keys(document.servers)).toStrictEqual(["other", "asana-gate"]);
-		expect(document.servers.other).toStrictEqual({ url: "http://x/*y*/" });
+		const document = (await readJson(file)) as { mcpServers: Record<string, unknown> };
+		expect(Object.keys(document.mcpServers)).toStrictEqual(["other", "asana-gate"]);
+		expect(document.mcpServers.other).toStrictEqual({ url: "http://x/*y*/" });
 		const written = await readFile(file, "utf8");
 		// The server entry is added in place: the file's comments stay.
 		expect(written).toContain("// mine");

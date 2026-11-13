@@ -14,20 +14,22 @@ import { UsageError } from "./context.ts";
 
 /**
  * How a repository is wired for a coding agent: the gate as a project MCP
- * server in the agent's own config file, a copy of the skill where the agent
- * reads skills, and, where the agent honors one, a rule that keeps the token
- * file from it. The MCP server keeps every copy of the skill current.
+ * server in the file the agent reads its servers from, a copy of the skill
+ * where the agent reads skills, and, where the agent honors one, a rule that
+ * keeps the token file from it. The MCP server keeps every copy of the skill
+ * current.
  */
 
 const SKILL = "asana-gate";
 const TOKEN_DENY = `Read(./${PROJECT_DIR}/${TOKEN_FILE})`;
+/** The member every agent's MCP file lists its servers under. */
+const SERVERS = "mcpServers";
 
 /** What one agent reads. */
 interface Agent {
 	readonly name: string;
-	/** The file its MCP servers are declared in, and the member they sit under. */
+	/** The file its MCP servers are declared in; agents may share one. */
 	readonly mcpFile: string;
-	readonly serversKey: string;
 	/** The directories it reads project skills from; `init` writes the first. */
 	readonly skillsDirs: readonly [string, ...string[]];
 	/** The file its standing instructions live in. */
@@ -40,22 +42,19 @@ const AGENTS: readonly Agent[] = [
 	{
 		name: "claude-code",
 		mcpFile: ".mcp.json",
-		serversKey: "mcpServers",
 		skillsDirs: [join(".claude", "skills")],
 		instructionsFile: "CLAUDE.md",
 		tokenGuard: join(".claude", "settings.json"),
 	},
 	{
 		name: "vscode",
-		mcpFile: join(".vscode", "mcp.json"),
-		serversKey: "servers",
+		mcpFile: ".mcp.json",
 		skillsDirs: [join(".agents", "skills"), join(".github", "skills"), join(".claude", "skills")],
 		instructionsFile: join(".github", "copilot-instructions.md"),
 	},
 	{
 		name: "cursor",
 		mcpFile: join(".cursor", "mcp.json"),
-		serversKey: "mcpServers",
 		skillsDirs: [join(".agents", "skills"), join(".cursor", "skills"), join(".claude", "skills")],
 		instructionsFile: "AGENTS.md",
 	},
@@ -66,6 +65,9 @@ const AGENT_NAMES = AGENTS.map((agent) => agent.name);
 
 /** Every directory an agent may read the skill from, so that a copy anywhere is kept current. */
 const SKILL_DIRS = [...new Set(AGENTS.flatMap((agent) => agent.skillsDirs))];
+
+/** Every file an agent may start the gate from. */
+const MCP_FILES = [...new Set(AGENTS.map((agent) => agent.mcpFile))];
 
 const usage = (message: string): Error => new UsageError(message);
 
@@ -137,8 +139,8 @@ function serverEntry(version: string): JsonObject {
 }
 
 /** The version the gate's entry in an agent's MCP file pins, when the entry is there. */
-function pinnedVersion(document: JsonObject, agent: Agent): string | undefined {
-	const servers = document[agent.serversKey];
+function pinnedVersion(document: JsonObject): string | undefined {
+	const servers = document[SERVERS];
 	const entry = isObject(servers) && isObject(servers[SKILL]) ? servers[SKILL] : {};
 	const args = Array.isArray(entry.args) ? (entry.args as unknown[]) : [];
 	const spec = args.find(
@@ -174,17 +176,18 @@ async function wireAgents(
 ): Promise<Wiring> {
 	const source = await packagedSkillDir();
 	const skillDirs = [...new Set(agents.map((agent) => agent.skillsDirs[0]))];
+	const mcpFiles = [...new Set(agents.map((agent) => agent.mcpFile))];
 	const guards = [
 		...new Set(agents.map((agent) => agent.tokenGuard).filter((file) => file !== undefined)),
 	];
 	// Every file is read and patched first, so one that cannot be parsed leaves the project as it was.
 	const writes = await Promise.all([
-		...agents.map((agent) =>
-			patchedJson(join(projectDir, agent.mcpFile), usage, (document) => {
-				const current = document[agent.serversKey];
+		...mcpFiles.map((file) =>
+			patchedJson(join(projectDir, file), usage, (document) => {
+				const current = document[SERVERS];
 				const servers = isObject(current) ? current : {};
 				servers[SKILL] = serverEntry(version);
-				document[agent.serversKey] = servers;
+				document[SERVERS] = servers;
 			}),
 		),
 		...guards.map((file) =>
@@ -207,11 +210,7 @@ async function wireAgents(
 		.filter((agent) => agent.tokenGuard === undefined)
 		.map((agent) => agent.name);
 	return {
-		written: [
-			...skillDirs.map((dir) => join(dir, SKILL)),
-			...agents.map((agent) => agent.mcpFile),
-			...guards,
-		],
+		written: [...skillDirs.map((dir) => join(dir, SKILL)), ...mcpFiles, ...guards],
 		instructions: agents.map((agent) => ({
 			file: agent.instructionsFile,
 			text: instructionsFor(agent),
@@ -244,14 +243,14 @@ interface Pin {
 	readonly problem?: string;
 }
 
-async function pinOf(projectDir: string, agent: Agent): Promise<Pin> {
+async function pinOf(projectDir: string, file: string): Promise<Pin> {
 	try {
-		const text = await readIfPresent(join(projectDir, agent.mcpFile));
-		const document = text === undefined ? undefined : parseJsonc(text, agent.mcpFile, usage);
-		const version = isObject(document) ? pinnedVersion(document, agent) : undefined;
-		return { file: agent.mcpFile, ...(version !== undefined && { version }) };
+		const text = await readIfPresent(join(projectDir, file));
+		const document = text === undefined ? undefined : parseJsonc(text, file, usage);
+		const version = isObject(document) ? pinnedVersion(document) : undefined;
+		return { file, ...(version !== undefined && { version }) };
 	} catch (error) {
-		return { file: agent.mcpFile, problem: messageOf(error) };
+		return { file, problem: messageOf(error) };
 	}
 }
 
@@ -259,7 +258,7 @@ async function pinOf(projectDir: string, agent: Agent): Promise<Pin> {
 async function auditAgentFiles(projectDir: string, version: string): Promise<Finding[]> {
 	const [copies, pins] = await Promise.all([
 		skillCopies(projectDir),
-		Promise.all(AGENTS.map((agent) => pinOf(projectDir, agent))),
+		Promise.all(MCP_FILES.map((file) => pinOf(projectDir, file))),
 	]);
 	return [
 		...pins

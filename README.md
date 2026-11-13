@@ -505,7 +505,8 @@ The Claude Code extension for VS Code reads the same `.mcp.json`.
 
 ### VS Code, Cursor and other agents
 
-`asana-gate init --agent vscode` and `--agent cursor` (repeatable, and combinable with `claude-code`) do the same for those editors: the server goes into `.vscode/mcp.json` (under `servers`) or `.cursor/mcp.json` (under `mcpServers`), and the skill into `.agents/skills/asana-gate`, the cross-agent directory that VS Code, Cursor and Codex all read.
+`asana-gate init --agent vscode` and `--agent cursor` (repeatable, and combinable with `claude-code`) do the same for those editors: the server goes into `.mcp.json`, which GitHub Copilot in VS Code reads as Claude Code and Copilot CLI do, or into `.cursor/mcp.json`, and the skill into `.agents/skills/asana-gate`, the cross-agent directory that VS Code, Cursor and Codex all read.
+VS Code starts the server without asking once the workspace is trusted; `.vscode/mcp.json`, the file of its deprecated Local agent harness, is not written.
 An existing file is changed only where the server goes, so its comments stay.
 The command prints the paragraph for `.github/copilot-instructions.md` or `AGENTS.md`.
 Neither editor can be told to keep its agent from reading a file in the project, so with them keep the token out of it: `asana-gate token set --user`, or the environment variable.
