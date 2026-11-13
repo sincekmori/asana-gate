@@ -1,6 +1,6 @@
 {
   "name": "asana-gate",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Declarative access-control policy in front of the Asana API, served to AI agents over MCP.",
   "keywords": [
     "access-control",
