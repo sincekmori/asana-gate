@@ -185,7 +185,8 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 
 `read` is the prerequisite of every other verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
 
-Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`, a section's `insert_before` or `insert_after` needs `section:reorder`; every other member needs `update`.
+Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, and so does the `approval_status` of an approval task, which Asana keeps in step with it (a new approval task in a status other than pending counts as completed, too); its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`, a section's `insert_before` or `insert_after` needs `section:reorder`; every other member needs `update`.
+A custom field defined in place where one is put on a project, a portfolio, a goal or a table is created by that request, so it needs `custom_field:create` in the workspace as well, and the constraints on `custom_field` shape the definition.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
 Asana restricts some operations further on its own side, and the gate passes its answer through: audit log events, workspace events, organization exports and graph exports are served only to a service account of an Enterprise-tier organization, task templates, allocations, rates and custom roles take a paid tier, and the early-access Agents endpoints answer only requests that carry the `ai_teammate_actors` flag, which `asana.enable` in the [settings](#configuration) sends.
@@ -301,11 +302,13 @@ Claude Code loads tool definitions on demand once they grow large, so a long lis
 The server's instructions tell the agent whom every request runs as: the gid of the token's user and the name and gid of the workspace, so it can tell which `assignee`, `created_by` or `followers` in a response is itself; the user's name and email are added only as far as the policy would show them through `GET /users/me` (`workspace:read` and `user:read` at workspace level, then `redact`).
 
 - Curated tools for everyday work: `asana_search_tasks`, `asana_list_tasks`, `asana_get_task`, `asana_create_task`, `asana_update_task`, `asana_create_comment`, `asana_move_task_to_section`, `asana_add_tag_to_task`, `asana_list_projects`, `asana_create_section`, `asana_typeahead`, `asana_get_me` and more.
-- `asana_create_tasks` and `asana_update_tasks` take up to 50 tasks at once: the gate checks each one, Asana runs them ten at a time, and the result holds one status per task.
+- `asana_create_tasks` and `asana_update_tasks` take up to 50 tasks at once, `asana_create_records` and `asana_update_records` as many records: the gate checks each one, Asana runs them ten at a time, and the result holds one status per task or record.
+- `asana_get_task` answers the task's latest comments and its direct subtasks in the same call when asked (`include_comments`, `include_subtasks`), and `asana_get_project` its sections and task counts (`include_sections`, `include_task_counts`): each part is a request of its own to the gate, and one the policy or Asana refuses is `null`.
 - `asana_request` calls any REST operation (`method`, `path`, `query`, `body`) through the same policy; a `POST /batch` through it takes up to 50 actions.
 - `asana_operations` lists the operations with the action each one needs; `asana_allowed_actions` tells what the policy allows on one object.
 
 Refusals come back as tool errors whose text is the JSON error body, so agents see the same wording a direct API client would.
+A tool refuses an argument its input does not declare, naming it, rather than run without it; `asana_request` takes every member of an operation.
 
 ### Confirmations
 
@@ -528,7 +531,9 @@ Some behaviors worth knowing:
 - `POST /sections/{gid}/addTask` adds a task from another project to the section's project; asana-gate therefore requires `task:create` there as well as `task:move`.
 - A task's `parent` cannot be changed through `PUT /tasks/{gid}`; use `setParent`.
 - Batch actions carry query parameters in `data`, not in `relative_path`.
-- The Search API, custom fields, portfolios, goals and task dependencies are unavailable on free workspaces (402); the gate passes such responses through.
+- The Search API, custom fields, portfolios, goals, task dependencies, milestones, and tables and records are unavailable on free workspaces (402); the gate passes such responses through.
+- `POST /projects/{gid}/removeMembers` refuses `me`, which `addMembers` takes, so `asana_remove_project_members` wants gids.
+- Removing a project's owner from its members leaves the project without an owner, and added back the user is an editor, who can neither take the ownership back nor delete the project.
 - Unknown `opt_fields` are ignored by Asana, so the fields the gate adds to requests never break them.
 - With `opt_fields`, Asana answers the `gid` and the selected members only: a reference selected alone comes back as `{ gid, resource_type }`, and one with a selection inside it (`parent.name`) as `{ gid, name }`, without its `resource_type`. The gate therefore also selects `resource_type` inside every member its fields reach into, to recognize and check nested references, and cuts a `GET` by gid back to the caller's fields before answering.
 - Nested selections reach into referenced objects, including on typeahead results: `memberships.project.team` gives a task's team with the task.

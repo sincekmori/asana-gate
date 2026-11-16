@@ -113,7 +113,8 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 
 `read` is the prerequisite of every other verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
 
-Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`, a section's `insert_before` or `insert_after` needs `section:reorder`; every other member needs `update`.
+Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, and so does the `approval_status` of an approval task, which Asana keeps in step with it (a new approval task in a status other than pending counts as completed, too); its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`, a section's `insert_before` or `insert_after` needs `section:reorder`; every other member needs `update`.
+A custom field defined in place where one is put on a project, a portfolio, a goal or a table is created by that request, so it needs `custom_field:create` in the workspace as well, and the constraints on `custom_field` shape the definition.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
 Asana restricts some operations further on its own side, and the gate passes its answer through: audit log events, workspace events, organization exports and graph exports are served only to a service account of an Enterprise-tier organization, task templates, allocations, rates and custom roles take a paid tier, and the early-access Agents endpoints answer only requests that carry the `ai_teammate_actors` flag, which `asana.enable` in the [settings](#configuration) sends.

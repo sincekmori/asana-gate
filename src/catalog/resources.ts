@@ -142,10 +142,12 @@ const VERB_TIERS = {
 /**
  * Body members of an `update` that stand for a verb of their own. Updating
  * such a member requires that verb instead of `update`, and a `fields`
- * allowlist naming the member grants that verb.
+ * allowlist naming the member grants that verb. An approval task's
+ * `approval_status` completes or reopens it, as `completed` does: Asana
+ * keeps the two in step.
  */
 const FIELD_VERBS: Partial<Record<Resource, Readonly<Record<string, Verb>>>> = {
-	task: { completed: "complete", assignee: "assign" },
+	task: { completed: "complete", approval_status: "complete", assignee: "assign" },
 	project: { archived: "archive" },
 	section: { insert_before: "reorder", insert_after: "reorder" },
 };

@@ -11,7 +11,7 @@ import * as z from "zod";
 
 import { renderQuery } from "../asana/query.ts";
 import { RESOURCES } from "../catalog/resources.ts";
-import type { Gate, GateRequest } from "../gate/gate.ts";
+import type { Gate } from "../gate/gate.ts";
 import {
 	confirmHandlerFor,
 	ElicitationNeededError,
@@ -21,7 +21,7 @@ import {
 import { instructionsFor } from "./instructions.ts";
 import { listOperations } from "./operations.ts";
 import { errorResult, explanationBody, jsonResult, toToolResult } from "./results.ts";
-import { BATCH_NOTE, exposedTools } from "./tools.ts";
+import { answer, BATCH_NOTE, exposedTools, type ToolRequest } from "./tools.ts";
 
 /** Options for {@link createAsanaGateServer}. */
 interface ServerOptions {
@@ -41,11 +41,11 @@ interface ToolCall {
 /** Runs a gated request for a tool call, asking the person for confirmation when the policy requires it. */
 async function gated(
 	call: ToolCall,
-	request: GateRequest,
+	request: ToolRequest,
 ): Promise<CallToolResult | InputRequiredResult> {
 	try {
 		return toToolResult(
-			await call.gate.execute(request, {
+			await answer(call.gate, request, {
 				confirm: confirmHandlerFor(call.era, call.ctx, request),
 			}),
 		);
@@ -96,7 +96,7 @@ function createAsanaGateServer(gate: Gate, options: ServerOptions): McpServer {
 		{
 			title: "Asana REST request",
 			description: `Calls any Asana REST API operation (https://developers.asana.com/reference) through the policy. Give the path below /api/1.0, e.g. /projects/123/sections. For POST and PUT, body is the \`data\` object. ${BATCH_NOTE}`,
-			inputSchema: z.object({
+			inputSchema: z.strictObject({
 				method: z.enum(METHODS),
 				path: z.string().describe("Path such as /tasks/123 or /workspaces/456/tasks/search"),
 				query: QuerySchema.optional(),
@@ -116,7 +116,7 @@ function createAsanaGateServer(gate: Gate, options: ServerOptions): McpServer {
 			title: "List Asana operations",
 			description:
 				"Lists the Asana REST operations asana_request can call, with the policy action each one needs. Filter by a search term (matched against the path, id and group) or by resource.",
-			inputSchema: z.object({
+			inputSchema: z.strictObject({
 				search: z.string().optional(),
 				resource: z.enum(RESOURCES).optional(),
 				limit: z.number().int().min(1).max(300).optional(),
@@ -131,7 +131,7 @@ function createAsanaGateServer(gate: Gate, options: ServerOptions): McpServer {
 			title: "Allowed actions on an object",
 			description:
 				"Tells which actions the policy allows on one object; 404 when the object is not visible to you.",
-			inputSchema: z.object({ resource_type: z.enum(RESOURCES), gid: z.string() }),
+			inputSchema: z.strictObject({ resource_type: z.enum(RESOURCES), gid: z.string() }),
 			annotations: { readOnlyHint: true, idempotentHint: true },
 		},
 		async (args) => {

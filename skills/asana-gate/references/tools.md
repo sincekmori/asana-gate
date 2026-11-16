@@ -10,23 +10,35 @@ Full-text and filtered task search in the workspace (Asana Search API; paid plan
 
 Command line: `asana-gate task search`
 
-| Input               | Command-line form              | Required | Meaning                                                                         |
-| ------------------- | ------------------------------ | -------- | ------------------------------------------------------------------------------- |
-| `text`              | `--text <string>`              | no       | Free-text query                                                                 |
-| `assignee_any`      | `--assignee-any <value,...>`   | no       | User gids, emails or "me"                                                       |
-| `projects_any`      | `--projects-any <value,...>`   | no       |                                                                                 |
-| `sections_any`      | `--sections-any <value,...>`   | no       |                                                                                 |
-| `tags_any`          | `--tags-any <value,...>`       | no       |                                                                                 |
-| `completed`         | `--completed`                  | no       |                                                                                 |
-| `is_subtask`        | `--is-subtask`                 | no       |                                                                                 |
-| `due_on_before`     | `--due-on-before <string>`     | no       |                                                                                 |
-| `due_on_after`      | `--due-on-after <string>`      | no       |                                                                                 |
-| `modified_on_after` | `--modified-on-after <string>` | no       |                                                                                 |
-| `created_on_after`  | `--created-on-after <string>`  | no       |                                                                                 |
-| `sort_by`           | `--sort-by <string>`           | no       | one of due_date, created_at, completed_at, likes, modified_at                   |
-| `sort_ascending`    | `--sort-ascending`             | no       |                                                                                 |
-| `limit`             | `--limit <number>`             | no       | Page size (1-100)                                                               |
-| `opt_fields`        | `--opt-fields <value,...>`     | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input                 | Command-line form                | Required | Meaning                                                                         |
+| --------------------- | -------------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `text`                | `--text <string>`                | no       | Free-text query                                                                 |
+| `resource_subtype`    | `--resource-subtype <string>`    | no       | one of default_task, milestone, approval                                        |
+| `assignee_any`        | `--assignee-any <value,...>`     | no       | User gids, emails or "me"                                                       |
+| `created_by_any`      | `--created-by-any <value,...>`   | no       | User gids, emails or "me"                                                       |
+| `followers_any`       | `--followers-any <value,...>`    | no       | User gids, emails or "me"                                                       |
+| `projects_any`        | `--projects-any <value,...>`     | no       |                                                                                 |
+| `sections_any`        | `--sections-any <value,...>`     | no       |                                                                                 |
+| `tags_any`            | `--tags-any <value,...>`         | no       |                                                                                 |
+| `completed`           | `--completed`                    | no       |                                                                                 |
+| `is_subtask`          | `--is-subtask`                   | no       |                                                                                 |
+| `due_on`              | `--due-on <string>`              | no       |                                                                                 |
+| `due_on_before`       | `--due-on-before <string>`       | no       |                                                                                 |
+| `due_on_after`        | `--due-on-after <string>`        | no       |                                                                                 |
+| `created_on_before`   | `--created-on-before <string>`   | no       |                                                                                 |
+| `created_on_after`    | `--created-on-after <string>`    | no       |                                                                                 |
+| `created_at_before`   | `--created-at-before <string>`   | no       | ISO 8601 date-time                                                              |
+| `created_at_after`    | `--created-at-after <string>`    | no       | ISO 8601 date-time                                                              |
+| `completed_on_before` | `--completed-on-before <string>` | no       |                                                                                 |
+| `completed_on_after`  | `--completed-on-after <string>`  | no       |                                                                                 |
+| `completed_at_before` | `--completed-at-before <string>` | no       | ISO 8601 date-time                                                              |
+| `completed_at_after`  | `--completed-at-after <string>`  | no       | ISO 8601 date-time                                                              |
+| `modified_on_after`   | `--modified-on-after <string>`   | no       |                                                                                 |
+| `modified_at_after`   | `--modified-at-after <string>`   | no       | ISO 8601 date-time                                                              |
+| `sort_by`             | `--sort-by <string>`             | no       | one of due_date, created_at, completed_at, likes, modified_at                   |
+| `sort_ascending`      | `--sort-ascending`               | no       |                                                                                 |
+| `limit`               | `--limit <number>`               | no       | Page size (1-100)                                                               |
+| `opt_fields`          | `--opt-fields <value,...>`       | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_tasks` — List tasks (read-only)
 
@@ -49,14 +61,17 @@ Command line: `asana-gate task list`
 
 ## `asana_get_task` — Get task (read-only)
 
-Reads one task with its full fields and allowed_actions.
+Reads one task with its full fields and allowed_actions and, when asked, its latest comments and its direct subtasks in the same call. A part that cannot be read is null.
 
 Command line: `asana-gate task get <task_gid>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `task_gid`   | `<task_gid>` (positional)  | yes      |                                                                                 |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input              | Command-line form          | Required | Meaning                                                                         |
+| ------------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `task_gid`         | `<task_gid>` (positional)  | yes      |                                                                                 |
+| `include_comments` | `--include-comments`       | no       | Also answer the latest comments, newest first, as comments                      |
+| `comment_limit`    | `--comment-limit <number>` | no       | How many comments (10 by default)                                               |
+| `include_subtasks` | `--include-subtasks`       | no       | Also answer the direct subtasks, as subtasks                                    |
+| `opt_fields`       | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_task` — Create task
 
@@ -64,44 +79,49 @@ Creates a task in one or more projects (optionally in a section), under a parent
 
 Command line: `asana-gate task create`
 
-| Input           | Command-line form         | Required | Meaning                                                                   |
-| --------------- | ------------------------- | -------- | ------------------------------------------------------------------------- |
-| `name`          | `--name <string>`         | yes      |                                                                           |
-| `notes`         | `--notes <string>`        | no       | Plain-text description                                                    |
-| `html_notes`    | `--html-notes <string>`   | no       | Rich-text description (<body>…</body>)                                    |
-| `assignee`      | `--assignee <string>`     | no       | User gid, email, "me", or null to unassign                                |
-| `due_on`        | `--due-on <string>`       | no       | null clears it                                                            |
-| `due_at`        | `--due-at <string>`       | no       | ISO 8601 date-time; null clears it                                        |
-| `start_on`      | `--start-on <string>`     | no       | null clears it                                                            |
-| `start_at`      | `--start-at <string>`     | no       | ISO 8601 date-time; null clears it                                        |
-| `completed`     | `--completed`             | no       |                                                                           |
-| `custom_fields` | `--custom-fields <json>`  | no       | Custom field values keyed by field gid (enum option gid, text, number, …) |
-| `projects`      | `--projects <value,...>`  | no       | Project gids to add the task to                                           |
-| `section`       | `--section <string>`      | no       | Section gid within the first project (requires projects)                  |
-| `parent`        | `--parent <string>`       | no       | Parent task gid (creates a subtask)                                       |
-| `workspace`     | `--workspace <string>`    | no       | Workspace gid; defaults to the policy's workspace                         |
-| `tags`          | `--tags <value,...>`      | no       |                                                                           |
-| `followers`     | `--followers <value,...>` | no       |                                                                           |
+| Input              | Command-line form             | Required | Meaning                                                                                                           |
+| ------------------ | ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `name`             | `--name <string>`             | yes      |                                                                                                                   |
+| `notes`            | `--notes <string>`            | no       | Plain-text description                                                                                            |
+| `html_notes`       | `--html-notes <string>`       | no       | Rich-text description (<body>…</body>)                                                                            |
+| `assignee`         | `--assignee <string>`         | no       | User gid, email, "me", or null to unassign                                                                        |
+| `assignee_section` | `--assignee-section <string>` | no       | null clears it                                                                                                    |
+| `due_on`           | `--due-on <string>`           | no       | null clears it                                                                                                    |
+| `due_at`           | `--due-at <string>`           | no       | ISO 8601 date-time; null clears it                                                                                |
+| `start_on`         | `--start-on <string>`         | no       | null clears it                                                                                                    |
+| `start_at`         | `--start-at <string>`         | no       | ISO 8601 date-time; null clears it                                                                                |
+| `completed`        | `--completed`                 | no       |                                                                                                                   |
+| `approval_status`  | `--approval-status <string>`  | no       | Of an approval task; every status but pending completes it; one of pending, approved, rejected, changes_requested |
+| `custom_fields`    | `--custom-fields <json>`      | no       | Custom field values keyed by field gid (enum option gid, text, number, …)                                         |
+| `resource_subtype` | `--resource-subtype <string>` | no       | one of default_task, milestone, approval                                                                          |
+| `projects`         | `--projects <value,...>`      | no       | Project gids to add the task to                                                                                   |
+| `section`          | `--section <string>`          | no       | Section gid within the first project (requires projects)                                                          |
+| `parent`           | `--parent <string>`           | no       | Parent task gid (creates a subtask)                                                                               |
+| `workspace`        | `--workspace <string>`        | no       | Workspace gid; defaults to the policy's workspace                                                                 |
+| `tags`             | `--tags <value,...>`          | no       |                                                                                                                   |
+| `followers`        | `--followers <value,...>`     | no       |                                                                                                                   |
 
 ## `asana_update_task` — Update task
 
-Updates fields of a task. Completing needs task:complete, assigning needs task:assign; other fields need task:update (possibly limited to an allowlist).
+Updates fields of a task. Completing (completed, or the approval_status of an approval task) needs task:complete, assigning needs task:assign; other fields need task:update (possibly limited to an allowlist).
 
 Command line: `asana-gate task update <task_gid>`
 
-| Input           | Command-line form         | Required | Meaning                                                                   |
-| --------------- | ------------------------- | -------- | ------------------------------------------------------------------------- |
-| `task_gid`      | `<task_gid>` (positional) | yes      |                                                                           |
-| `name`          | `--name <string>`         | no       |                                                                           |
-| `notes`         | `--notes <string>`        | no       | Plain-text description                                                    |
-| `html_notes`    | `--html-notes <string>`   | no       | Rich-text description (<body>…</body>)                                    |
-| `assignee`      | `--assignee <string>`     | no       | null clears it                                                            |
-| `due_on`        | `--due-on <string>`       | no       | null clears it                                                            |
-| `due_at`        | `--due-at <string>`       | no       | ISO 8601 date-time; null clears it                                        |
-| `start_on`      | `--start-on <string>`     | no       | null clears it                                                            |
-| `start_at`      | `--start-at <string>`     | no       | ISO 8601 date-time; null clears it                                        |
-| `completed`     | `--completed`             | no       |                                                                           |
-| `custom_fields` | `--custom-fields <json>`  | no       | Custom field values keyed by field gid (enum option gid, text, number, …) |
+| Input              | Command-line form             | Required | Meaning                                                                                                           |
+| ------------------ | ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `task_gid`         | `<task_gid>` (positional)     | yes      |                                                                                                                   |
+| `name`             | `--name <string>`             | no       |                                                                                                                   |
+| `notes`            | `--notes <string>`            | no       | Plain-text description                                                                                            |
+| `html_notes`       | `--html-notes <string>`       | no       | Rich-text description (<body>…</body>)                                                                            |
+| `assignee`         | `--assignee <string>`         | no       | null clears it                                                                                                    |
+| `assignee_section` | `--assignee-section <string>` | no       | null clears it                                                                                                    |
+| `due_on`           | `--due-on <string>`           | no       | null clears it                                                                                                    |
+| `due_at`           | `--due-at <string>`           | no       | ISO 8601 date-time; null clears it                                                                                |
+| `start_on`         | `--start-on <string>`         | no       | null clears it                                                                                                    |
+| `start_at`         | `--start-at <string>`         | no       | ISO 8601 date-time; null clears it                                                                                |
+| `completed`        | `--completed`                 | no       |                                                                                                                   |
+| `approval_status`  | `--approval-status <string>`  | no       | Of an approval task; every status but pending completes it; one of pending, approved, rejected, changes_requested |
+| `custom_fields`    | `--custom-fields <json>`      | no       | Custom field values keyed by field gid (enum option gid, text, number, …)                                         |
 
 ## `asana_create_tasks` — Create tasks
 
@@ -152,21 +172,24 @@ Creates a subtask under a task; it inherits the parent's scope unless projects a
 
 No command-line form: use `asana-gate api` or the tool.
 
-| Input             | Command-line form            | Required | Meaning                                                                   |
-| ----------------- | ---------------------------- | -------- | ------------------------------------------------------------------------- |
-| `name`            | `--name <string>`            | yes      |                                                                           |
-| `notes`           | `--notes <string>`           | no       | Plain-text description                                                    |
-| `html_notes`      | `--html-notes <string>`      | no       | Rich-text description (<body>…</body>)                                    |
-| `assignee`        | `--assignee <string>`        | no       | User gid, email, "me", or null to unassign                                |
-| `due_on`          | `--due-on <string>`          | no       | null clears it                                                            |
-| `due_at`          | `--due-at <string>`          | no       | ISO 8601 date-time; null clears it                                        |
-| `start_on`        | `--start-on <string>`        | no       | null clears it                                                            |
-| `start_at`        | `--start-at <string>`        | no       | ISO 8601 date-time; null clears it                                        |
-| `completed`       | `--completed`                | no       |                                                                           |
-| `custom_fields`   | `--custom-fields <json>`     | no       | Custom field values keyed by field gid (enum option gid, text, number, …) |
-| `projects`        | `--projects <value,...>`     | no       | Project gids to add the task to                                           |
-| `tags`            | `--tags <value,...>`         | no       |                                                                           |
-| `parent_task_gid` | `--parent-task-gid <string>` | yes      |                                                                           |
+| Input              | Command-line form             | Required | Meaning                                                                                                           |
+| ------------------ | ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `name`             | `--name <string>`             | yes      |                                                                                                                   |
+| `notes`            | `--notes <string>`            | no       | Plain-text description                                                                                            |
+| `html_notes`       | `--html-notes <string>`       | no       | Rich-text description (<body>…</body>)                                                                            |
+| `assignee`         | `--assignee <string>`         | no       | User gid, email, "me", or null to unassign                                                                        |
+| `assignee_section` | `--assignee-section <string>` | no       | null clears it                                                                                                    |
+| `due_on`           | `--due-on <string>`           | no       | null clears it                                                                                                    |
+| `due_at`           | `--due-at <string>`           | no       | ISO 8601 date-time; null clears it                                                                                |
+| `start_on`         | `--start-on <string>`         | no       | null clears it                                                                                                    |
+| `start_at`         | `--start-at <string>`         | no       | ISO 8601 date-time; null clears it                                                                                |
+| `completed`        | `--completed`                 | no       |                                                                                                                   |
+| `approval_status`  | `--approval-status <string>`  | no       | Of an approval task; every status but pending completes it; one of pending, approved, rejected, changes_requested |
+| `custom_fields`    | `--custom-fields <json>`      | no       | Custom field values keyed by field gid (enum option gid, text, number, …)                                         |
+| `resource_subtype` | `--resource-subtype <string>` | no       | one of default_task, milestone, approval                                                                          |
+| `projects`         | `--projects <value,...>`      | no       | Project gids to add the task to                                                                                   |
+| `tags`             | `--tags <value,...>`          | no       |                                                                                                                   |
+| `parent_task_gid`  | `--parent-task-gid <string>`  | yes      |                                                                                                                   |
 
 ## `asana_set_task_parent` — Set task parent
 
@@ -263,18 +286,65 @@ Command line: `asana-gate task remove-dependencies <task_gid>`
 | `task_gid`     | `<task_gid>` (positional)    | yes      |         |
 | `dependencies` | `--dependencies <value,...>` | yes      |         |
 
+## `asana_add_task_dependents` — Add task dependents
+
+Marks tasks that depend on this task; every referenced task must be visible.
+
+Command line: `asana-gate task add-dependents <task_gid>`
+
+| Input        | Command-line form          | Required | Meaning |
+| ------------ | -------------------------- | -------- | ------- |
+| `task_gid`   | `<task_gid>` (positional)  | yes      |         |
+| `dependents` | `--dependents <value,...>` | yes      |         |
+
+## `asana_remove_task_dependents` — Remove task dependents
+
+Removes dependents of a task.
+
+Command line: `asana-gate task remove-dependents <task_gid>`
+
+| Input        | Command-line form          | Required | Meaning |
+| ------------ | -------------------------- | -------- | ------- |
+| `task_gid`   | `<task_gid>` (positional)  | yes      |         |
+| `dependents` | `--dependents <value,...>` | yes      |         |
+
+## `asana_add_task_followers` — Add task followers
+
+Adds followers (collaborators) to a task.
+
+Command line: `asana-gate task add-followers <task_gid>`
+
+| Input       | Command-line form         | Required | Meaning                   |
+| ----------- | ------------------------- | -------- | ------------------------- |
+| `task_gid`  | `<task_gid>` (positional) | yes      |                           |
+| `followers` | `--followers <value,...>` | yes      | User gids, emails or "me" |
+
+## `asana_remove_task_followers` — Remove task followers
+
+Removes followers (collaborators) from a task.
+
+Command line: `asana-gate task remove-followers <task_gid>`
+
+| Input       | Command-line form         | Required | Meaning                   |
+| ----------- | ------------------------- | -------- | ------------------------- |
+| `task_gid`  | `<task_gid>` (positional) | yes      |                           |
+| `followers` | `--followers <value,...>` | yes      | User gids, emails or "me" |
+
 ## `asana_list_task_stories` — List task stories (read-only)
 
 Lists the comments and activity (stories) of a task.
 
 Command line: `asana-gate task comments <task_gid>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `task_gid`   | `<task_gid>` (positional)  | yes      |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input              | Command-line form             | Required | Meaning                                                                         |
+| ------------------ | ----------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `task_gid`         | `<task_gid>` (positional)     | yes      |                                                                                 |
+| `created_after`    | `--created-after <string>`    | no       | ISO 8601 date-time                                                              |
+| `resource_subtype` | `--resource-subtype <string>` | no       | Comments only; one of comment_added                                             |
+| `sort_ascending`   | `--sort-ascending`            | no       | Oldest first (the default) or newest first                                      |
+| `limit`            | `--limit <number>`            | no       | Page size (1-100)                                                               |
+| `offset`           | `--offset <string>`           | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields`       | `--opt-fields <value,...>`    | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_comment` — Comment on task
 
@@ -295,12 +365,12 @@ Edits a comment.
 
 Command line: `asana-gate comment update <story_gid>`
 
-| Input       | Command-line form          | Required | Meaning |
-| ----------- | -------------------------- | -------- | ------- |
-| `story_gid` | `<story_gid>` (positional) | yes      |         |
-| `text`      | `--text <string>`          | no       |         |
-| `html_text` | `--html-text <string>`     | no       |         |
-| `is_pinned` | `--is-pinned`              | no       |         |
+| Input       | Command-line form          | Required | Meaning                            |
+| ----------- | -------------------------- | -------- | ---------------------------------- |
+| `story_gid` | `<story_gid>` (positional) | yes      |                                    |
+| `text`      | `--text <string>`          | no       | Plain-text comment                 |
+| `html_text` | `--html-text <string>`     | no       | Rich-text comment (<body>…</body>) |
+| `is_pinned` | `--is-pinned`              | no       |                                    |
 
 ## `asana_delete_story` — Delete story (destructive)
 
@@ -378,14 +448,16 @@ Command line: `asana-gate project list`
 
 ## `asana_get_project` — Get project (read-only)
 
-Reads one project.
+Reads one project and, when asked, its sections and its task counts in the same call. A part that cannot be read is null.
 
 Command line: `asana-gate project get <project_gid>`
 
-| Input         | Command-line form            | Required | Meaning                                                                         |
-| ------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `project_gid` | `<project_gid>` (positional) | yes      |                                                                                 |
-| `opt_fields`  | `--opt-fields <value,...>`   | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input                 | Command-line form            | Required | Meaning                                                                         |
+| --------------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `project_gid`         | `<project_gid>` (positional) | yes      |                                                                                 |
+| `include_sections`    | `--include-sections`         | no       | Also answer the sections, as sections                                           |
+| `include_task_counts` | `--include-task-counts`      | no       | Also answer the counts of its tasks, hidden ones too, as task_counts            |
+| `opt_fields`          | `--opt-fields <value,...>`   | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_project` — Create project
 
@@ -393,18 +465,22 @@ Creates a project in the workspace (and a team, in organizations).
 
 Command line: `asana-gate project create`
 
-| Input          | Command-line form         | Required | Meaning                                           |
-| -------------- | ------------------------- | -------- | ------------------------------------------------- |
-| `name`         | `--name <string>`         | yes      |                                                   |
-| `workspace`    | `--workspace <string>`    | no       | Workspace gid; defaults to the policy's workspace |
-| `team`         | `--team <string>`         | no       |                                                   |
-| `notes`        | `--notes <string>`        | no       |                                                   |
-| `html_notes`   | `--html-notes <string>`   | no       |                                                   |
-| `color`        | `--color <string>`        | no       |                                                   |
-| `due_on`       | `--due-on <string>`       | no       |                                                   |
-| `start_on`     | `--start-on <string>`     | no       |                                                   |
-| `public`       | `--public`                | no       |                                                   |
-| `default_view` | `--default-view <string>` | no       | one of list, board, calendar, timeline            |
+| Input                  | Command-line form                 | Required | Meaning                                                                   |
+| ---------------------- | --------------------------------- | -------- | ------------------------------------------------------------------------- |
+| `name`                 | `--name <string>`                 | yes      |                                                                           |
+| `notes`                | `--notes <string>`                | no       |                                                                           |
+| `html_notes`           | `--html-notes <string>`           | no       |                                                                           |
+| `color`                | `--color <string>`                | no       | null clears it                                                            |
+| `due_on`               | `--due-on <string>`               | no       | null clears it                                                            |
+| `start_on`             | `--start-on <string>`             | no       | null clears it                                                            |
+| `public`               | `--public`                        | no       |                                                                           |
+| `privacy_setting`      | `--privacy-setting <string>`      | no       | one of public_to_workspace, private_to_team, private                      |
+| `default_access_level` | `--default-access-level <string>` | no       | What a member added later may do; one of admin, editor, commenter, viewer |
+| `default_view`         | `--default-view <string>`         | no       | one of list, board, calendar, timeline                                    |
+| `owner`                | `--owner <string>`                | no       | User gid, email, "me", or null for none; null clears it                   |
+| `custom_fields`        | `--custom-fields <json>`          | no       | Custom field values keyed by field gid (enum option gid, text, number, …) |
+| `workspace`            | `--workspace <string>`            | no       | Workspace gid; defaults to the policy's workspace                         |
+| `team`                 | `--team <string>`                 | no       |                                                                           |
 
 ## `asana_update_project` — Update project
 
@@ -412,18 +488,23 @@ Updates fields of a project; archiving needs project:archive.
 
 Command line: `asana-gate project update <project_gid>`
 
-| Input         | Command-line form            | Required | Meaning        |
-| ------------- | ---------------------------- | -------- | -------------- |
-| `project_gid` | `<project_gid>` (positional) | yes      |                |
-| `name`        | `--name <string>`            | no       |                |
-| `notes`       | `--notes <string>`           | no       |                |
-| `html_notes`  | `--html-notes <string>`      | no       |                |
-| `color`       | `--color <string>`           | no       | null clears it |
-| `due_on`      | `--due-on <string>`          | no       | null clears it |
-| `start_on`    | `--start-on <string>`        | no       | null clears it |
-| `archived`    | `--archived`                 | no       |                |
-| `public`      | `--public`                   | no       |                |
-| `owner`       | `--owner <string>`           | no       |                |
+| Input                  | Command-line form                 | Required | Meaning                                                                   |
+| ---------------------- | --------------------------------- | -------- | ------------------------------------------------------------------------- |
+| `project_gid`          | `<project_gid>` (positional)      | yes      |                                                                           |
+| `name`                 | `--name <string>`                 | no       |                                                                           |
+| `notes`                | `--notes <string>`                | no       |                                                                           |
+| `html_notes`           | `--html-notes <string>`           | no       |                                                                           |
+| `color`                | `--color <string>`                | no       | null clears it                                                            |
+| `due_on`               | `--due-on <string>`               | no       | null clears it                                                            |
+| `start_on`             | `--start-on <string>`             | no       | null clears it                                                            |
+| `public`               | `--public`                        | no       |                                                                           |
+| `privacy_setting`      | `--privacy-setting <string>`      | no       | one of public_to_workspace, private_to_team, private                      |
+| `default_access_level` | `--default-access-level <string>` | no       | What a member added later may do; one of admin, editor, commenter, viewer |
+| `default_view`         | `--default-view <string>`         | no       | one of list, board, calendar, timeline                                    |
+| `owner`                | `--owner <string>`                | no       | User gid, email, "me", or null for none; null clears it                   |
+| `custom_fields`        | `--custom-fields <json>`          | no       | Custom field values keyed by field gid (enum option gid, text, number, …) |
+| `icon`                 | `--icon <string>`                 | no       | null clears it                                                            |
+| `archived`             | `--archived`                      | no       |                                                                           |
 
 ## `asana_delete_project` — Delete project (destructive)
 
@@ -434,6 +515,63 @@ Command line: `asana-gate project delete <project_gid>`
 | Input         | Command-line form            | Required | Meaning |
 | ------------- | ---------------------------- | -------- | ------- |
 | `project_gid` | `<project_gid>` (positional) | yes      |         |
+
+## `asana_get_project_task_counts` — Get project task counts (read-only)
+
+Counts the tasks and milestones of a project, complete and incomplete; the tasks the policy hides are counted too.
+
+Command line: `asana-gate project task-counts <project_gid>`
+
+| Input         | Command-line form            | Required | Meaning |
+| ------------- | ---------------------------- | -------- | ------- |
+| `project_gid` | `<project_gid>` (positional) | yes      |         |
+
+## `asana_add_project_members` — Add project members
+
+Adds members to a project (needs project:manage_members).
+
+Command line: `asana-gate project add-members <project_gid>`
+
+| Input         | Command-line form            | Required | Meaning                   |
+| ------------- | ---------------------------- | -------- | ------------------------- |
+| `project_gid` | `<project_gid>` (positional) | yes      |                           |
+| `members`     | `--members <value,...>`      | yes      | User gids, emails or "me" |
+
+## `asana_remove_project_members` — Remove project members
+
+Removes members from a project (needs project:manage_members). Removing its owner leaves the project without one.
+
+Command line: `asana-gate project remove-members <project_gid>`
+
+| Input         | Command-line form            | Required | Meaning                                  |
+| ------------- | ---------------------------- | -------- | ---------------------------------------- |
+| `project_gid` | `<project_gid>` (positional) | yes      |                                          |
+| `members`     | `--members <value,...>`      | yes      | User gids; Asana does not take "me" here |
+
+## `asana_add_custom_field_to_project` — Add custom field to project
+
+Puts a custom field on a project, for its tasks to carry (needs custom_field_setting:create).
+
+Command line: `asana-gate project add-custom-field <project_gid>`
+
+| Input           | Command-line form            | Required | Meaning                                   |
+| --------------- | ---------------------------- | -------- | ----------------------------------------- |
+| `project_gid`   | `<project_gid>` (positional) | yes      |                                           |
+| `custom_field`  | `--custom-field <string>`    | yes      | Custom field gid                          |
+| `is_important`  | `--is-important`             | no       | Whether the field shows prominently       |
+| `insert_before` | `--insert-before <string>`   | no       | Custom field setting gid to put it before |
+| `insert_after`  | `--insert-after <string>`    | no       | Custom field setting gid to put it after  |
+
+## `asana_remove_custom_field_from_project` — Remove custom field from project
+
+Takes a custom field off a project (needs custom_field_setting:delete).
+
+Command line: `asana-gate project remove-custom-field <project_gid>`
+
+| Input          | Command-line form            | Required | Meaning |
+| -------------- | ---------------------------- | -------- | ------- |
+| `project_gid`  | `<project_gid>` (positional) | yes      |         |
+| `custom_field` | `--custom-field <string>`    | yes      |         |
 
 ## `asana_list_sections` — List sections (read-only)
 
@@ -554,6 +692,19 @@ Command line: `asana-gate user get <user>`
 | `user`       | `<user>` (positional)      | yes      | User gid, email or "me"                                                         |
 | `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
 
+## `asana_list_user_teams` — List a user's teams (read-only)
+
+Lists the teams a user belongs to.
+
+Command line: `asana-gate user teams <user>`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `user`       | `<user>` (positional)      | yes      | User gid, email or "me"                                                         |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
 ## `asana_list_teams` — List teams (read-only)
 
 Lists the teams of the workspace (organizations only).
@@ -655,15 +806,342 @@ Command line: `asana-gate custom-field list`
 | `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
 | `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
 
+## `asana_create_custom_field` — Create custom field
+
+Creates a custom field definition in the workspace, to put on a project or a table.
+
+Command line: `asana-gate custom-field create`
+
+| Input                   | Command-line form                  | Required | Meaning                                                                                   |
+| ----------------------- | ---------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `name`                  | `--name <string>`                  | yes      |                                                                                           |
+| `resource_subtype`      | `--type <string>`                  | yes      | one of text, number, date, enum, multi_enum, people, reference                            |
+| `description`           | `--description <string>`           | no       |                                                                                           |
+| `enum_options`          | `--enum-options <json>`            | no       | The options of an enum or multi_enum field                                                |
+| `precision`             | `--precision <number>`             | no       | Decimal places of a number field                                                          |
+| `format`                | `--format <string>`                | no       | How a number field shows; one of currency, identifier, percentage, custom, duration, none |
+| `currency_code`         | `--currency-code <string>`         | no       | ISO 4217 code, with the currency format                                                   |
+| `custom_label`          | `--custom-label <string>`          | no       | The label of the custom format                                                            |
+| `custom_label_position` | `--custom-label-position <string>` | no       | one of prefix, suffix                                                                     |
+
+## `asana_list_task_templates` — List task templates (read-only)
+
+Lists the task templates of a project.
+
+Command line: `asana-gate task-template list`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `project`    | `--project <string>`       | yes      |                                                                                 |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_create_task_from_template` — Create task from template
+
+Starts creating a task from a task template, in the template's project (needs task_template:read and task:create there). Asana answers with the job doing it, not the task.
+
+Command line: `asana-gate task-template instantiate <task_template_gid>`
+
+| Input               | Command-line form                  | Required | Meaning                                     |
+| ------------------- | ---------------------------------- | -------- | ------------------------------------------- |
+| `task_template_gid` | `<task_template_gid>` (positional) | yes      |                                             |
+| `name`              | `--name <string>`                  | no       | Name of the task; the template's by default |
+
+## `asana_create_project_from_template` — Create project from template
+
+Starts creating a project from a project template, which asana_typeahead finds (needs project_template:read, and project:create in the team given or else where the template lives). Asana answers with the job doing it, not the project.
+
+Command line: `asana-gate project-template instantiate <project_template_gid>`
+
+| Input                  | Command-line form                     | Required | Meaning                                                              |
+| ---------------------- | ------------------------------------- | -------- | -------------------------------------------------------------------- |
+| `project_template_gid` | `<project_template_gid>` (positional) | yes      |                                                                      |
+| `name`                 | `--name <string>`                     | yes      |                                                                      |
+| `team`                 | `--team <string>`                     | no       | Team of the project                                                  |
+| `privacy_setting`      | `--privacy-setting <string>`          | no       | one of public_to_workspace, private_to_team, private                 |
+| `is_strict`            | `--is-strict`                         | no       | Fail when a date variable of the template is given no date           |
+| `requested_dates`      | `--requested-dates <json>`            | no       | A date for each date variable of the template, by the variable's gid |
+| `requested_roles`      | `--requested-roles <json>`            | no       | A user for each role of the template, by the role's gid              |
+
+## `asana_list_notifications` — List notifications (read-only)
+
+Lists the Inbox notifications of the token's user; one shows only when the policy shows every object it is about.
+
+Command line: `asana-gate notification list`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_mark_notifications_read` — Mark notifications read
+
+Marks Inbox notifications of the token's user as read.
+
+Command line: `asana-gate notification mark-read`
+
+| Input               | Command-line form                 | Required | Meaning                  |
+| ------------------- | --------------------------------- | -------- | ------------------------ |
+| `notification_gids` | `--notification-gids <value,...>` | yes      | Notification gids (1-50) |
+
+## `asana_mark_notifications_unread` — Mark notifications unread
+
+Marks Inbox notifications of the token's user as unread.
+
+Command line: `asana-gate notification mark-unread`
+
+| Input               | Command-line form                 | Required | Meaning                  |
+| ------------------- | --------------------------------- | -------- | ------------------------ |
+| `notification_gids` | `--notification-gids <value,...>` | yes      | Notification gids (1-50) |
+
+## `asana_list_agents` — List AI Teammates (read-only)
+
+Lists the AI Teammates (agents) of the workspace.
+
+Command line: `asana-gate agent list`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_get_agent` — Get AI Teammate (read-only)
+
+Reads one AI Teammate (agent).
+
+Command line: `asana-gate agent get <agent_gid>`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `agent_gid`  | `<agent_gid>` (positional) | yes      |                                                                                 |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_list_tables` — List tables (read-only)
+
+Lists the tables of the workspace.
+
+Command line: `asana-gate table list`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_get_table` — Get table (read-only)
+
+Reads one table.
+
+Command line: `asana-gate table get <table_gid>`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `table_gid`  | `<table_gid>` (positional) | yes      |                                                                                 |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_list_table_custom_fields` — List table custom fields (read-only)
+
+Lists the custom field settings of a table: the fields its records carry.
+
+Command line: `asana-gate table custom-fields <table_gid>`
+
+| Input        | Command-line form          | Required | Meaning                                                                         |
+| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `table_gid`  | `<table_gid>` (positional) | yes      |                                                                                 |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_create_table` — Create table
+
+Creates a table in the workspace.
+
+Command line: `asana-gate table create`
+
+| Input  | Command-line form | Required | Meaning |
+| ------ | ----------------- | -------- | ------- |
+| `name` | `--name <string>` | yes      |         |
+
+## `asana_update_table` — Update table
+
+Renames a table.
+
+Command line: `asana-gate table update <table_gid>`
+
+| Input       | Command-line form          | Required | Meaning |
+| ----------- | -------------------------- | -------- | ------- |
+| `table_gid` | `<table_gid>` (positional) | yes      |         |
+| `name`      | `--name <string>`          | yes      |         |
+
+## `asana_add_custom_field_to_table` — Add custom field to table
+
+Puts a custom field on a table, for its records to carry (needs custom_field_setting:create).
+
+Command line: `asana-gate table add-custom-field <table_gid>`
+
+| Input           | Command-line form          | Required | Meaning                                   |
+| --------------- | -------------------------- | -------- | ----------------------------------------- |
+| `table_gid`     | `<table_gid>` (positional) | yes      |                                           |
+| `custom_field`  | `--custom-field <string>`  | yes      | Custom field gid                          |
+| `is_important`  | `--is-important`           | no       | Whether the field shows prominently       |
+| `insert_before` | `--insert-before <string>` | no       | Custom field setting gid to put it before |
+| `insert_after`  | `--insert-after <string>`  | no       | Custom field setting gid to put it after  |
+
+## `asana_remove_custom_field_from_table` — Remove custom field from table
+
+Takes a custom field off a table (needs custom_field_setting:delete).
+
+Command line: `asana-gate table remove-custom-field <table_gid>`
+
+| Input          | Command-line form          | Required | Meaning |
+| -------------- | -------------------------- | -------- | ------- |
+| `table_gid`    | `<table_gid>` (positional) | yes      |         |
+| `custom_field` | `--custom-field <string>`  | yes      |         |
+
+## `asana_list_records` — List records (read-only)
+
+Lists the records of a table.
+
+Command line: `asana-gate record list`
+
+| Input            | Command-line form           | Required | Meaning                                                                         |
+| ---------------- | --------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `table_gid`      | `--table <string>`          | yes      |                                                                                 |
+| `modified_since` | `--modified-since <string>` | no       | ISO 8601 date-time                                                              |
+| `sort_by`        | `--sort-by <string>`        | no       | one of created_at                                                               |
+| `limit`          | `--limit <number>`          | no       | Page size (1-100)                                                               |
+| `offset`         | `--offset <string>`         | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields`     | `--opt-fields <value,...>`  | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_search_records` — Search records (read-only)
+
+Searches the records of the workspace by name and filters, in every table unless the filters name some; Asana wants at least one filter. Results are limited to records the policy makes visible.
+
+Command line: `asana-gate record search`
+
+| Input               | Command-line form              | Required | Meaning                                                                         |
+| ------------------- | ------------------------------ | -------- | ------------------------------------------------------------------------------- |
+| `text`              | `--text <string>`              | no       | Text in the record's name                                                       |
+| `tables_any`        | `--tables-any <value,...>`     | no       |                                                                                 |
+| `tables_not`        | `--tables-not <value,...>`     | no       |                                                                                 |
+| `tables_all`        | `--tables-all <value,...>`     | no       |                                                                                 |
+| `teams_any`         | `--teams-any <value,...>`      | no       |                                                                                 |
+| `followers_any`     | `--followers-any <value,...>`  | no       | User gids, emails or "me"                                                       |
+| `followers_not`     | `--followers-not <value,...>`  | no       | User gids, emails or "me"                                                       |
+| `created_on`        | `--created-on <string>`        | no       |                                                                                 |
+| `created_on_before` | `--created-on-before <string>` | no       |                                                                                 |
+| `created_on_after`  | `--created-on-after <string>`  | no       |                                                                                 |
+| `created_at_before` | `--created-at-before <string>` | no       | ISO 8601 date-time                                                              |
+| `created_at_after`  | `--created-at-after <string>`  | no       | ISO 8601 date-time                                                              |
+| `sort_by`           | `--sort-by <string>`           | no       | one of created_at, modified_at                                                  |
+| `sort_ascending`    | `--sort-ascending`             | no       |                                                                                 |
+| `limit`             | `--limit <number>`             | no       | Page size (1-100)                                                               |
+| `opt_fields`        | `--opt-fields <value,...>`     | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_get_record` — Get record (read-only)
+
+Reads one record.
+
+Command line: `asana-gate record get <record_gid>`
+
+| Input        | Command-line form           | Required | Meaning                                                                         |
+| ------------ | --------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `record_gid` | `<record_gid>` (positional) | yes      |                                                                                 |
+| `opt_fields` | `--opt-fields <value,...>`  | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_create_record` — Create record
+
+Creates a record in a table.
+
+Command line: `asana-gate record create`
+
+| Input                | Command-line form               | Required | Meaning                                                                         |
+| -------------------- | ------------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `name`               | `--name <string>`               | yes      |                                                                                 |
+| `table`              | `--table <string>`              | yes      |                                                                                 |
+| `custom_fields`      | `--custom-fields <json>`        | no       | Custom field values keyed by field gid (enum option gid, text, number, …)       |
+| `unique_fingerprint` | `--unique-fingerprint <string>` | no       | A key of your own; Asana refuses a second record with the same key in the table |
+
+## `asana_update_record` — Update record
+
+Updates the name or the custom field values of a record.
+
+Command line: `asana-gate record update <record_gid>`
+
+| Input           | Command-line form           | Required | Meaning                                                                   |
+| --------------- | --------------------------- | -------- | ------------------------------------------------------------------------- |
+| `record_gid`    | `<record_gid>` (positional) | yes      |                                                                           |
+| `name`          | `--name <string>`           | no       |                                                                           |
+| `custom_fields` | `--custom-fields <json>`    | no       | Custom field values keyed by field gid (enum option gid, text, number, …) |
+
+## `asana_create_records` — Create records
+
+Creates up to 50 records in one call, each as asana_create_record would. The result holds one status_code and body per record, in order; Asana may fail some while the others succeed. A policy refusal of any record refuses the whole call before anything runs, and its message names the record (actions[i]).
+
+Command line: `asana-gate record create-many`
+
+| Input     | Command-line form  | Required | Meaning                                                           |
+| --------- | ------------------ | -------- | ----------------------------------------------------------------- |
+| `records` | `--records <json>` | yes      | The records to create, each like the input of asana_create_record |
+
+## `asana_update_records` — Update records
+
+Updates up to 50 records in one call, each as asana_update_record would. The result holds one status_code and body per record, in order; Asana may fail some while the others succeed. A policy refusal of any record refuses the whole call before anything runs, and its message names the record (actions[i]).
+
+Command line: `asana-gate record update-many`
+
+| Input     | Command-line form  | Required | Meaning                                                           |
+| --------- | ------------------ | -------- | ----------------------------------------------------------------- |
+| `records` | `--records <json>` | yes      | The records to update, each like the input of asana_update_record |
+
+## `asana_delete_record` — Delete record (destructive)
+
+Deletes a record.
+
+Command line: `asana-gate record delete <record_gid>`
+
+| Input        | Command-line form           | Required | Meaning |
+| ------------ | --------------------------- | -------- | ------- |
+| `record_gid` | `<record_gid>` (positional) | yes      |         |
+
+## `asana_list_record_stories` — List record stories (read-only)
+
+Lists the comments and activity (stories) of a record.
+
+Command line: `asana-gate record comments <record_gid>`
+
+| Input        | Command-line form           | Required | Meaning                                                                         |
+| ------------ | --------------------------- | -------- | ------------------------------------------------------------------------------- |
+| `record_gid` | `<record_gid>` (positional) | yes      |                                                                                 |
+| `limit`      | `--limit <number>`          | no       | Page size (1-100)                                                               |
+| `offset`     | `--offset <string>`         | no       | Pagination token: next_page.offset of the previous page                         |
+| `opt_fields` | `--opt-fields <value,...>`  | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+
+## `asana_create_record_comment` — Comment on record
+
+Adds a comment (story) to a record.
+
+Command line: `asana-gate record comment <record_gid>`
+
+| Input        | Command-line form           | Required | Meaning                            |
+| ------------ | --------------------------- | -------- | ---------------------------------- |
+| `record_gid` | `<record_gid>` (positional) | yes      |                                    |
+| `text`       | `--text <string>`           | no       | Plain-text comment                 |
+| `html_text`  | `--html-text <string>`      | no       | Rich-text comment (<body>…</body>) |
+| `is_pinned`  | `--is-pinned`               | no       |                                    |
+
 ## `asana_typeahead` — Typeahead search (read-only)
 
-Finds objects by name prefix (tasks, projects, users, tags, teams, portfolios, goals, custom fields, project templates).
+Finds objects by name prefix (tasks, projects, users, tags, teams, portfolios, goals, custom fields, project templates, AI Teammates as agent, people and AI Teammates together as actor).
 
 Command line: `asana-gate find <query>`
 
-| Input           | Command-line form          | Required | Meaning                                                                                |
-| --------------- | -------------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `resource_type` | `--type <string>`          | yes      | one of task, project, user, tag, team, portfolio, goal, custom_field, project_template |
-| `query`         | `<query>` (positional)     | yes      |                                                                                        |
-| `count`         | `--count <number>`         | no       | Results to return (1-100)                                                              |
-| `opt_fields`    | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed)        |
+| Input           | Command-line form          | Required | Meaning                                                                                              |
+| --------------- | -------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `resource_type` | `--type <string>`          | yes      | one of task, project, user, tag, team, portfolio, goal, custom_field, project_template, agent, actor |
+| `query`         | `<query>` (positional)     | yes      |                                                                                                      |
+| `count`         | `--count <number>`         | no       | Results to return (1-100)                                                                            |
+| `opt_fields`    | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed)                      |

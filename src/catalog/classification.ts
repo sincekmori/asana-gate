@@ -523,16 +523,21 @@ async function crossFactsOf(
 	};
 }
 
-/** The state of a task about to be created, from its request body. */
+/**
+ * The state of a task about to be created, from its request body. An
+ * approval task is complete in every status but pending, as Asana keeps its
+ * `approval_status` and `completed` in step.
+ */
 function createdTaskState(
 	ctx: PlanContext,
 	body: Readonly<Record<string, unknown>>,
 	parent: Target | undefined,
 ): ObjectState {
+	const status = stringOf(body.approval_status) ?? "pending";
 	return {
 		...taskState(body),
 		createdBy: ctx.policy.me.gid,
-		completed: body.completed === true,
+		completed: body.completed === true || status !== "pending",
 		hasParent: parent !== undefined,
 		createdAt: new Date().toISOString(),
 	};
@@ -1281,6 +1286,47 @@ function naming(rule: OperationRule, named: (ctx: PlanContext) => readonly Named
 	};
 }
 
+/**
+ * `rule` for a body that may define a new object in `field` where it would
+ * name one: the definition is planned as `operation`, the object's own POST,
+ * so creating it in place needs the same checks and gets the same shaping.
+ */
+function defining(rule: OperationRule, field: string, operation: OperationId): OperationRule {
+	return {
+		...rule,
+		async plan(ctx) {
+			const plan = await rule.plan(ctx);
+			const value = ctx.body[field];
+			if (!isObject(value)) {
+				return plan;
+			}
+			const spec = OPERATIONS[operation];
+			const sub = await ctx.planSub({
+				operationId: operation,
+				spec,
+				params: {},
+				query: {},
+				body: value,
+			});
+			const data = isObject(plan.data) ? plan.data : ctx.body;
+			return {
+				...plan,
+				checks: [...plan.checks, ...sub.checks],
+				data: { ...data, [field]: sub.data ?? value },
+			};
+		},
+	};
+}
+
+/** `POST /<type>s/{gid}/addCustomFieldSetting`: the custom field is an existing one by gid, or a new one defined in place. */
+function addCustomFieldSetting(on: Resource): OperationRule {
+	return defining(
+		actOn({ on, verb: "create", resource: "custom_field_setting" }),
+		"custom_field",
+		"createCustomField",
+	);
+}
+
 /** The gid-valued filters of `GET /workspaces/{gid}/tasks/search` (`projects.any`, …) and what they name. */
 const SEARCH_FILTERS: Readonly<Record<string, Resource>> = {
 	projects: "project",
@@ -1505,11 +1551,7 @@ const RULES = {
 		shaping: "checked",
 	}),
 	getParentGoalsForGoal: listUnder({ under: "goal", items: "goal" }),
-	addCustomFieldSettingForGoal: actOn({
-		on: "goal",
-		verb: "create",
-		resource: "custom_field_setting",
-	}),
+	addCustomFieldSettingForGoal: addCustomFieldSetting("goal"),
 	removeCustomFieldSettingForGoal: actOn({
 		on: "goal",
 		verb: "delete",
@@ -1570,11 +1612,7 @@ const RULES = {
 	}),
 	addItemForPortfolio: portfolioItemRule,
 	removeItemForPortfolio: portfolioItemRule,
-	addCustomFieldSettingForPortfolio: actOn({
-		on: "portfolio",
-		verb: "create",
-		resource: "custom_field_setting",
-	}),
+	addCustomFieldSettingForPortfolio: addCustomFieldSetting("portfolio"),
 	removeCustomFieldSettingForPortfolio: actOn({
 		on: "portfolio",
 		verb: "delete",
@@ -1660,11 +1698,7 @@ const RULES = {
 		response: "list",
 		scope: "filter",
 	}),
-	addCustomFieldSettingForProject: actOn({
-		on: "project",
-		verb: "create",
-		resource: "custom_field_setting",
-	}),
+	addCustomFieldSettingForProject: addCustomFieldSetting("project"),
 	removeCustomFieldSettingForProject: actOn({
 		on: "project",
 		verb: "delete",
@@ -1787,11 +1821,7 @@ const RULES = {
 		scope: "filter",
 	}),
 	createTable: onWorkspace("table", "create", { body: "workspace", response: "item" }),
-	addCustomFieldSettingForTable: actOn({
-		on: "table",
-		verb: "create",
-		resource: "custom_field_setting",
-	}),
+	addCustomFieldSettingForTable: addCustomFieldSetting("table"),
 	removeCustomFieldSettingForTable: actOn({
 		on: "table",
 		verb: "delete",

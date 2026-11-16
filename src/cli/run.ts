@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 
 import * as z from "zod";
 
-import type { Gate, GateRequest } from "../gate/gate.ts";
+import { answer } from "../mcp/tools.ts";
 import { type Command, commandHelp, findCommand, nounHelp } from "./commands.ts";
 import { cliConfirmHandler } from "./confirm.ts";
 import { type CommonOptions, GATED_OPTIONS, UsageError } from "./context.ts";
@@ -20,15 +20,18 @@ interface GatedOptions extends CommonOptions {
 	readonly yes: boolean;
 }
 
+/** How a command's tool makes its request: from its input, for the policy in force. */
+type Asking = Command["spec"]["request"];
+
 /** Opens the gate once, sends the request `build` makes for its policy through it, prints the result and returns the exit code. */
 async function runGated(
-	build: (policy: Gate["policy"]) => GateRequest,
+	build: (policy: Parameters<Asking>[1]) => ReturnType<Asking>,
 	options: GatedOptions,
 ): Promise<number> {
 	const context = await createContext(options);
 	const gate = await openGate(context);
 	const confirm = cliConfirmHandler(options.yes);
-	const response = await gate.execute(build(gate.policy), confirm === undefined ? {} : { confirm });
+	const response = await answer(gate, build(gate.policy), confirm === undefined ? {} : { confirm });
 	if (options.json) {
 		console.log(JSON.stringify(response.body, null, 2));
 	} else if (response.status >= 400) {

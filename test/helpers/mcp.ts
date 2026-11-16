@@ -5,7 +5,7 @@ import { Client } from "@modelcontextprotocol/client";
 import { InMemoryTransport } from "@modelcontextprotocol/server";
 
 import { createAsanaGateServer } from "../../src/mcp/server.ts";
-import { setupGate } from "./gate.ts";
+import { type Fake, setupGate } from "./gate.ts";
 
 const POLICY = `
 version: 1
@@ -23,8 +23,8 @@ rules:
 /** A client connected in memory to a server over the fake Asana, under `policy`; `close` tears both down. */
 export async function connectMcp(
 	policy = POLICY,
-): Promise<{ client: Client; close: () => Promise<void> }> {
-	const { gate } = await setupGate(policy);
+): Promise<{ client: Client; fake: Fake; close: () => Promise<void> }> {
+	const { fake, gate } = await setupGate(policy);
 	const server = createAsanaGateServer(gate, { version: "0.0.0-test" });
 	const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 	await server.connect(serverTransport);
@@ -32,6 +32,7 @@ export async function connectMcp(
 	await client.connect(clientTransport);
 	return {
 		client,
+		fake,
 		close: async () => {
 			await client.close();
 			await server.close();

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { TOOLS } from "../src/mcp/tools.ts";
 import { callTool as call, connectMcp as setup } from "./helpers/mcp.ts";
+import { fieldsSentTo } from "./helpers/requests.ts";
 
 /** The instructions a client gets from a server under `policy` (the helper's default when absent). */
 async function instructionsUnder(policy?: string): Promise<string> {
@@ -71,6 +72,49 @@ describe("mcp server", () => {
 		await close();
 		expect(refused.isError).toBe(true);
 		expect(refused.structuredContent?.status).toBe(403);
+	});
+
+	it("refuses an argument a tool does not declare, by name, instead of running without it", async () => {
+		const { client, fake, close } = await setup();
+		// Without the argument this is a top-level comment the policy allows: not what was asked.
+		const reply = await call(client, "asana_create_comment", {
+			task_gid: "101",
+			text: "a reply",
+			parent_comment: "9",
+		});
+		const generic = await call(client, "asana_request", {
+			method: "POST",
+			path: "/tasks/101/stories",
+			data: { text: "a reply" },
+		});
+		await close();
+		expect(reply.isError).toBe(true);
+		expect(reply.content[0]?.text).toContain('Unrecognized key: "parent_comment"');
+		expect(generic.isError).toBe(true);
+		expect(generic.content[0]?.text).toContain('Unrecognized key: "data"');
+		expect(fake.calls.map((sent) => sent.method)).not.toContain("POST");
+	});
+
+	it("counts a project's tasks without being told which counts to ask Asana for", async () => {
+		const { client, fake, close } = await setup();
+		const counted = await call(client, "asana_get_project_task_counts", { project_gid: "21" });
+		await close();
+		expect(fieldsSentTo(fake, "/task_counts")).toContain("num_incomplete_tasks");
+		const { data } = counted.structuredContent as { data: Record<string, unknown> };
+		expect(data.num_tasks).toBeTypeOf("number");
+	});
+
+	it("reads a task with its comments and its subtasks in one call", async () => {
+		const { client, close } = await setup();
+		const read = await call(client, "asana_get_task", {
+			task_gid: "101",
+			include_comments: true,
+			include_subtasks: true,
+		});
+		await close();
+		const { data } = read.structuredContent as { data: Record<string, { gid: string }[]> };
+		expect(data.comments?.map((comment) => comment.gid)).toStrictEqual(["501"]);
+		expect(data.subtasks?.map((subtask) => subtask.gid)).toStrictEqual(["104"]);
 	});
 
 	it("serves the generic request tool", async () => {

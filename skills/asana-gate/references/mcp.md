@@ -7,11 +7,13 @@ Claude Code loads tool definitions on demand once they grow large, so a long lis
 The server's instructions tell the agent whom every request runs as: the gid of the token's user and the name and gid of the workspace, so it can tell which `assignee`, `created_by` or `followers` in a response is itself; the user's name and email are added only as far as the policy would show them through `GET /users/me` (`workspace:read` and `user:read` at workspace level, then `redact`).
 
 - Curated tools for everyday work: `asana_search_tasks`, `asana_list_tasks`, `asana_get_task`, `asana_create_task`, `asana_update_task`, `asana_create_comment`, `asana_move_task_to_section`, `asana_add_tag_to_task`, `asana_list_projects`, `asana_create_section`, `asana_typeahead`, `asana_get_me` and more.
-- `asana_create_tasks` and `asana_update_tasks` take up to 50 tasks at once: the gate checks each one, Asana runs them ten at a time, and the result holds one status per task.
+- `asana_create_tasks` and `asana_update_tasks` take up to 50 tasks at once, `asana_create_records` and `asana_update_records` as many records: the gate checks each one, Asana runs them ten at a time, and the result holds one status per task or record.
+- `asana_get_task` answers the task's latest comments and its direct subtasks in the same call when asked (`include_comments`, `include_subtasks`), and `asana_get_project` its sections and task counts (`include_sections`, `include_task_counts`): each part is a request of its own to the gate, and one the policy or Asana refuses is `null`.
 - `asana_request` calls any REST operation (`method`, `path`, `query`, `body`) through the same policy; a `POST /batch` through it takes up to 50 actions.
 - `asana_operations` lists the operations with the action each one needs; `asana_allowed_actions` tells what the policy allows on one object.
 
 Refusals come back as tool errors whose text is the JSON error body, so agents see the same wording a direct API client would.
+A tool refuses an argument its input does not declare, naming it, rather than run without it; `asana_request` takes every member of an operation.
 
 ### Confirmations
 

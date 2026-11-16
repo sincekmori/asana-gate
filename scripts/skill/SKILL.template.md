@@ -28,16 +28,18 @@ Check it before writing, because an action missing from it will be refused: plan
 | `429` `asana-gate: <action> is limited to N per <period>`                                  | A rate cap the policy sets on this action in this scope                                                                                         | Wait for the period to pass; do not loop on it                                                                                                          |
 
 Lists (projects, tasks, search, typeahead, events) are filtered silently: hidden objects are simply absent, nothing says how many were removed, and a page carries `next_page.offset` to continue with `offset`.
-Asana's own errors pass through unchanged, without the `asana-gate:` prefix: a 402 means the workspace's plan lacks the feature (search, custom fields, portfolios and goals need a paid plan), a plain 400 is Asana rejecting the body, a plain 403 is the token's own permission (audit log events, workspace events and organization exports take a service account on an Enterprise tier; the early-access Agents endpoints take the `ai_teammate_actors` flag in the settings' `asana.enable`).
+Asana's own errors pass through unchanged, without the `asana-gate:` prefix: a 402 means the workspace's plan lacks the feature (search, custom fields, portfolios, goals, task dependencies, milestones, and tables and records need a paid plan), a plain 400 is Asana rejecting the body, a plain 403 is the token's own permission (audit log events, workspace events and organization exports take a service account on an Enterprise tier; the early-access Agents endpoints take the `ai_teammate_actors` flag in the settings' `asana.enable`).
 Look for the prefix: with it the policy decided, without it Asana did.
 
 ## Working through MCP
 
 The server exposes the curated tools the policy could ever allow, plus three generic ones:
 
-- `asana_create_tasks` and `asana_update_tasks` take up to {{BATCH_LIMIT}} tasks at once and answer with one `status_code` and `body` per task, in order; some may fail while the others succeed.
+- `asana_create_tasks` and `asana_update_tasks` take up to {{BATCH_LIMIT}} tasks at once, `asana_create_records` and `asana_update_records` as many records, and answer with one `status_code` and `body` per task or record, in order; some may fail while the others succeed.
+- `asana_get_task` with `include_comments` and `include_subtasks`, and `asana_get_project` with `include_sections` and `include_task_counts`, answer those parts in the same call: prefer that to separate calls when starting on a task or a project; a part that could not be read is `null`, not empty.
 - `asana_request` calls any Asana REST operation (`method`, `path` below `/api/1.0`, `query`, `body` as the `data` object) through the same policy; a `POST /batch` through it takes up to {{BATCH_LIMIT}} actions.
 - `asana_operations` lists the operations with the policy action each needs; `asana_allowed_actions` tells what you may do with one object.
+- A tool refuses an argument its input does not declare (`Unrecognized key`) rather than run without it: `asana_operations` shows every member an operation takes, and `asana_request` sends them.
 
 {{TOOLS_TABLE}}
 
@@ -103,7 +105,8 @@ How a request is decided:
    Keys in one `where` are ANDed, and a name is resolved against Asana when the policy loads, so an unknown name is an error rather than a silent no-match.
 2. **Actions.** `<resource>:<verb>` such as `task:update`; the groups `read`, `modify` (every verb but read), `write` (read plus every creating and modifying verb) and `admin` (everything); the wildcards `task:*` and `*:delete`.
    `read` is the prerequisite of every verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
-   Updating `completed` needs `task:complete`, `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; other members need `update`.
+   Updating `completed` needs `task:complete`, as does the `approval_status` of an approval task; `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; other members need `update`.
+   A custom field defined in place while it is put on a project or a table also needs `custom_field:create`.
    Explicit-only actions never come from a group or a wildcard and must be written out to be allowed: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`; in `deny`, `confirm` and `limit` a group or wildcard does cover them.
 3. **Which rule wins.** The most specific scope decides (task, then subtree, section, project, then team, portfolio or unhomed, then workspace), then the rule with more filters; at equal specificity `deny` wins; no matching rule means deny.
    Filters never make an object visible on their own: they widen or narrow what may be done with objects another rule already lets the agent read, and they can hide (`deny: [task:read]`).

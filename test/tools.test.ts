@@ -6,10 +6,9 @@ import * as z from "zod";
 
 import type { HttpMethod } from "../src/catalog/operation-spec.ts";
 import { type OperationId, OPERATIONS } from "../src/catalog/operations.gen.ts";
-import type { GateRequest } from "../src/gate/gate.ts";
 import { isObject } from "../src/gate/objects.ts";
 import { matchRoute } from "../src/gate/router.ts";
-import { TOOLS } from "../src/mcp/tools.ts";
+import { type AnyToolSpec, type ToolRequest, TOOLS } from "../src/mcp/tools.ts";
 import type { Policy } from "../src/policy/types.ts";
 
 const POLICY: Policy = {
@@ -38,6 +37,25 @@ interface JsonSchema {
 	readonly anyOf?: readonly JsonSchema[];
 	readonly items?: JsonSchema;
 	readonly properties?: Readonly<Record<string, JsonSchema>>;
+	readonly additionalProperties?: unknown;
+}
+
+/** A tool's input as a client sees it. */
+const inputOf = (spec: AnyToolSpec): JsonSchema =>
+	z.toJSONSchema(spec.input, { io: "input" }) as JsonSchema;
+
+/** The places in `schema`, from `at` down, that list their members and take others too. */
+function open(schema: JsonSchema, at: string): string[] {
+	const below = [
+		...Object.entries(schema.properties ?? {}).flatMap(([key, member]) =>
+			open(member, `${at}.${key}`),
+		),
+		...(schema.items === undefined ? [] : open(schema.items, `${at}[]`)),
+		...(schema.anyOf ?? []).flatMap((option) => open(option, at)),
+	];
+	return schema.properties !== undefined && schema.additionalProperties !== false
+		? [at, ...below]
+		: below;
 }
 
 /** A value of a tool's input JSON Schema with every optional member given. */
@@ -95,10 +113,13 @@ function undeclared(method: string, path: string, members: readonly string[]): s
 }
 
 /** The requests a tool sends for a full input: itself, or the actions of its batch. */
-function sentBy(request: GateRequest): { method: string; path: string; members: string[] }[] {
+function sentBy(request: ToolRequest): { method: string; path: string; members: string[] }[] {
 	const body = isObject(request.body) ? request.body : {};
 	if (request.path !== "/batch") {
-		return [{ ...request, members: [...Object.keys(request.query ?? {}), ...Object.keys(body)] }];
+		return [
+			{ ...request, members: [...Object.keys(request.query ?? {}), ...Object.keys(body)] },
+			...Object.values(request.include ?? {}).flatMap((part) => sentBy(part)),
+		];
 	}
 	const actions: unknown[] = Array.isArray(body.actions) ? body.actions : [];
 	return actions
@@ -113,9 +134,7 @@ function sentBy(request: GateRequest): { method: string; path: string; members: 
 /** Per tool, what its requests send that the catalog does not state. */
 function drift(): string[] {
 	return TOOLS.flatMap((spec) => {
-		const input = spec.input.parse(
-			sampleOf(z.toJSONSchema(spec.input, { io: "input" }) as JsonSchema),
-		);
+		const input = spec.input.parse(sampleOf(inputOf(spec)));
 		const request = spec.request(input, POLICY);
 		const operation = matchRoute(request.method, request.path)?.operationId;
 		return [
@@ -130,5 +149,9 @@ function drift(): string[] {
 describe("curated tools", () => {
 	it("send their operation, with the members the catalog states", () => {
 		expect(drift()).toStrictEqual([]);
+	});
+
+	it("take no member they do not declare, at any depth", () => {
+		expect(TOOLS.flatMap((spec) => open(inputOf(spec), spec.name))).toStrictEqual([]);
 	});
 });

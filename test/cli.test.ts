@@ -57,6 +57,12 @@ describe("command line commands", () => {
 			"tag",
 			"portfolio",
 			"custom-field",
+			"task-template",
+			"project-template",
+			"notification",
+			"agent",
+			"table",
+			"record",
 			"find",
 		]);
 	});
