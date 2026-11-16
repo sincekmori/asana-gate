@@ -10,7 +10,7 @@ import { badRequest, notFound } from "./errors.ts";
 import { type FactsLoader, type Loaded, readOperationOf } from "./facts.ts";
 import { type AsanaObject, gidOf, gidsOf, isObject } from "./objects.ts";
 import { parseOptFields, type Selection } from "./selection.ts";
-import { shapeBody } from "./shape.ts";
+import { shapeBody, type ShapeTarget } from "./shape.ts";
 
 /** An object the request acts on, with its facts resolved. */
 interface Target {
@@ -157,7 +157,7 @@ interface PlanContext extends PlanInputs {
 	 */
 	shape(
 		facts: Facts,
-		target: { resource: Resource; verb: "create" | "update" },
+		target: ShapeTarget,
 		body?: Readonly<Record<string, unknown>>,
 	): Promise<Record<string, unknown>>;
 	/** The violations {@link shape} recorded, shared with the contexts of sub-requests. */

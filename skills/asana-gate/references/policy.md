@@ -79,7 +79,11 @@ Hierarchy keys in one `where` are ANDed.
 Filters (`tag`, `assignee`, `custom_field` and the state filters below them) are ANDed with the hierarchy keys and never make an object visible on their own: they narrow or widen what may be done with objects that another rule already lets the agent read, and they may hide objects (`deny: [task:read]`).
 For a create request, the filters see the object the request would create: its name after `apply`, the token's user as its creator, its due date and so on.
 
-Objects that are not tasks live at the nearest hierarchy level: stories, attachments, time entries and the like follow their task; sections, briefs, status updates, memberships, templates and webhooks follow their project, portfolio or goal; tags, users, custom field definitions and most administrative resources live at workspace level.
+Objects that are not tasks live where the object they belong to does.
+Stories, attachments and time entries follow their task (a story on a goal and an attachment on a project brief follow that instead); sections, project briefs, task templates and project memberships follow their project; status updates and memberships follow their project, portfolio or goal, and allocations, budgets and rates their project or portfolio.
+A webhook follows the object it watches, which may be a task or a team as well.
+Project templates and team memberships follow their team, as does a goal that has one, and a goal relationship follows the goal it supports.
+Tags, users, custom field definitions, tables, records and most administrative resources live at workspace level.
 
 ### Actions
 
@@ -115,7 +119,8 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 
 Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, and so does the `approval_status` of an approval task, which Asana keeps in step with it (a new approval task in a status other than pending counts as completed, too); its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; every other member needs `update`.
 A custom field defined in place where one is put on a project, a portfolio, a goal or a table is created by that request, so it needs `custom_field:create` in the workspace as well, and the constraints on `custom_field` shape the definition.
-One named by gid must be visible to the policy, like any object a request names, to be put on and to be taken off.
+One named by gid must be visible to the policy, like any object a request names, to be put on and to be taken off; so must the table a new record goes into, and the tables a record search filters by.
+Taking a local field off again (one outside the workspace's library, as a field defined in place on a project is) deletes it, as live checks showed, so that needs `custom_field:delete` as well; a library field needs only `custom_field_setting:delete`.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
 Asana restricts some operations further on its own side, and the gate passes its answer through: audit log events, workspace events, organization exports and graph exports are served only to a service account of an Enterprise-tier organization, task templates, allocations, rates and custom roles take a paid tier, and the early-access Agents endpoints answer only requests that carry the `ai_teammate_actors` flag, which `asana.enable` in the [settings](#configuration) sends.
@@ -164,7 +169,8 @@ rules:
 
 Members are the request members of Asana's API (`name`, `due_on`, `assignee`, `projects`, `tags`, …); a member Asana does not accept for the resource is an error when the policy loads.
 `custom_fields` nests by field name or gid, and the values of an enum field may be option names or gids; a field named like an operator (`in`, `value`, …) is named by its gid, and operators may not stand beside field names.
-Names in `in`, `not_in` and `apply` values are resolved when the policy loads, like names in `where`: enum option names, tag names (`tags`), users (`me` or an email for `assignee`, `followers`, `owner`), projects and teams; a request may then send either the gid or the name, and `apply` sends the gid.
+Names in `in`, `not_in` and `apply` values are resolved when the policy loads, like names in `where`: enum option names, tag names (`tags`), users (`me` or an email for `assignee`, `followers`, `owner`), projects and teams.
+A request names them as Asana takes them, by gid (a user also by `me` or an email), so a refusal lists each value with its gid, as in `must be one of AI (1200000000000071)`; `apply` sends the gid.
 
 A requirement combines operators, all of which must hold:
 
@@ -188,6 +194,7 @@ An application is a bare value (a default) or an object of operators:
 
 When several rules apply to one object, every `require` holds, the most specific rule's `apply` wins per member, and `forbid`, `redact` and `confirm` add up.
 A request is shaped in the order `apply`, `forbid`, `require`, so a default or a prefix can satisfy a requirement.
+A project, portfolio or task made from a template or as a duplicate is shaped on the members its request sets itself, as a create of its own would be (its `name`, and an instantiated project's `team` and `privacy_setting`); what the template or the copy brings is left to it, so a requirement on another member does not hold such a request back.
 Limits count per rule and action inside one gate process, over a sliding window, and a refused request does not count; they are a brake on runaway agents, not an audit trail.
 
 ### How a request is decided

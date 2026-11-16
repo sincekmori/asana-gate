@@ -494,6 +494,7 @@ const TEMPLATES: Readonly<Record<string, () => Json>> = {
 		enabled: true,
 		enum_options: [],
 		workspace: null,
+		is_global_to_workspace: true,
 	}),
 	enum_option: () => ({ name: "", enabled: true, color: "none" }),
 	team: () => ({ name: "", description: "", organization: null }),
@@ -1124,7 +1125,23 @@ function listActionRoute(world: World, spec: OperationSpec, { param, segment }: 
 function settingRoute(world: World, parentType: string, adding: boolean): Handler {
 	return ({ params, data }) => {
 		const parent = world.lookup(parentType, params[`${parentType}_gid`]);
-		const field = refTo(bodyObject(world, data, "custom_field"));
+		const given = data.custom_field;
+		const defined = isObject(given) && gidOf(given) === undefined;
+		if (defined && parentType === "goal") {
+			refuse(error(400, "Cannot add non-global custom fields to this object."));
+		}
+		// A field defined in place joins the workspace's library on a table and is
+		// local to the parent elsewhere, where it goes with its setting (as live).
+		const object = defined
+			? world.store.put(
+					world.fresh("custom_field", {
+						...given,
+						workspace: world.workspaceOf(parent) ?? null,
+						is_global_to_workspace: parentType === "table",
+					}),
+				)
+			: bodyObject(world, data, "custom_field");
+		const field = refTo(object);
 		const settings = world.store
 			.all("custom_field_setting")
 			.filter((setting) => gidOf(setting.parent) === parent.gid);
@@ -1136,6 +1153,9 @@ function settingRoute(world: World, parentType: string, adding: boolean): Handle
 			: undefined;
 		if (!adding) {
 			world.store.delete("custom_field_setting", String(existing?.gid));
+			if (object.is_global_to_workspace === false) {
+				world.store.delete("custom_field", String(object.gid));
+			}
 			if (values !== undefined) {
 				parent.custom_fields = values;
 			}

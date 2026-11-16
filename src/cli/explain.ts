@@ -66,6 +66,15 @@ function describeBranch(branch: Branch): string {
 	return text === "" ? "workspace level" : text;
 }
 
+/** JSON for a compiled constraint: a value set as `{ "<gid sent>": "<as written>" }`, a pattern as written. */
+const constraintJson = (constraint: unknown): string =>
+	JSON.stringify(constraint, (_key, value: unknown): unknown => {
+		if (value instanceof Map) {
+			return Object.fromEntries(value as ReadonlyMap<string, string>);
+		}
+		return value instanceof RegExp ? String(value) : value;
+	});
+
 /** Prints the constraints in force for the object's resource. */
 function printConstraints(policy: Policy, loaded: Loaded): void {
 	const effective = constraintsFor(policy, loaded.facts);
@@ -73,11 +82,11 @@ function printConstraints(policy: Policy, loaded: Loaded): void {
 	const label = (key: string): string => labelOf(effective, key);
 	for (const [key, requirements] of effective.require.get(loaded.type) ?? []) {
 		lines.push(
-			`  require ${label(key)}: ${requirements.map((r) => JSON.stringify(r)).join(" and ")}`,
+			`  require ${label(key)}: ${requirements.map((r) => constraintJson(r)).join(" and ")}`,
 		);
 	}
 	for (const [key, application] of effective.apply.get(loaded.type) ?? []) {
-		lines.push(`  apply   ${label(key)}: ${JSON.stringify(application)}`);
+		lines.push(`  apply   ${label(key)}: ${constraintJson(application)}`);
 	}
 	const forbid = effective.forbid.get(loaded.type);
 	if (forbid !== undefined && forbid.size > 0) {
@@ -201,4 +210,4 @@ async function runExplain(argv: readonly string[]): Promise<number> {
 	return 0;
 }
 
-export { runExplain };
+export { constraintJson, runExplain };

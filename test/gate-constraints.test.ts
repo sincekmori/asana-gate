@@ -57,25 +57,23 @@ describe("constraints in the gate", () => {
 		expect(fake.calls.at(-1)?.body).toMatchObject({ custom_fields: { "61": "71" } });
 	});
 
-	it("accepts the enum option gid where the policy names the option", async () => {
-		const { gate } = await setup();
-		const response = await gate.execute({
-			method: "POST",
-			path: "/tasks",
-			body: { name: "x", projects: ["21"], due_on: "2026-12-01", custom_fields: { "61": "71" } },
-		});
-		expect(response.status).toBe(201);
+	it("takes the enum option by the gid Asana takes, naming it where the name is sent", async () => {
+		const { fake, gate } = await setup();
+		const created = (owner: string): ReturnType<typeof gate.execute> =>
+			gate.execute({
+				method: "POST",
+				path: "/tasks",
+				body: { name: "x", projects: ["21"], due_on: "2026-12-01", custom_fields: { "61": owner } },
+			});
+		await expect(created("71")).resolves.toMatchObject({ status: 201 });
+		const named = await created("AI");
+		expect(named.status).toBe(400);
+		expect(message(named.body)).toContain('custom field "Owner" must be one of AI (71)');
+		expect(fake.calls.filter((call) => call.method === "POST")).toHaveLength(1);
 	});
 
-	it("does not shape bodies that describe something other than the resource", async () => {
+	it("checks followers against the field allowlist without completing them", async () => {
 		const { gate } = await setup();
-		// A duplicate's body (name, include) cannot carry `due_on`, which project 21 requires.
-		const duplicate = await gate.authorize({
-			method: "POST",
-			path: "/tasks/101/duplicate",
-			body: { name: "copy", include: ["notes"] },
-		});
-		expect(duplicate.plan.data).toBeUndefined();
 		// Followers are checked against a field allowlist but not completed by `apply`.
 		const followers = await gate.authorize({
 			method: "POST",

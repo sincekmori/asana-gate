@@ -73,14 +73,22 @@ function optionResolver(definition: CustomFieldDefinition): ValueResolver | unde
 	};
 }
 
-/** The texts an `in` / `not_in` list matches: as written, and resolved to gids. */
-async function referenceSet(
+/** A value as a request sends it: resolved when the member's values name objects, as written otherwise. */
+const resolveValue = (value: Scalar, resolve: ValueResolver | undefined): Promise<Scalar> =>
+	resolve === undefined ? Promise.resolve(value) : resolve(value);
+
+/**
+ * The values an `in` / `not_in` list matches, as a request carries them:
+ * resolved to the gids Asana takes, which a name in a request is not (a
+ * user a request names by `me` or an email is compared by gid), each with
+ * how the policy wrote it.
+ */
+async function referenceValues(
 	values: readonly Scalar[],
 	resolve: ValueResolver | undefined,
-): Promise<Set<string>> {
-	const resolved =
-		resolve === undefined ? [] : await Promise.all(values.map((value) => resolve(value)));
-	return new Set([...values, ...resolved].map(String));
+): Promise<Map<string, string>> {
+	const sent = await Promise.all(values.map((value) => resolveValue(value, resolve)));
+	return new Map(sent.map((value, index) => [String(value), String(values[index])]));
 }
 
 const isScalarList = (value: Scalar | readonly Scalar[]): value is readonly Scalar[] =>
@@ -103,8 +111,8 @@ async function compileRequirement(
 		...(raw.not_matches !== undefined && {
 			notMatches: compileRegExp(raw.not_matches, `${label}.not_matches`),
 		}),
-		...(raw.in !== undefined && { in: await referenceSet(raw.in, resolve) }),
-		...(raw.not_in !== undefined && { notIn: await referenceSet(raw.not_in, resolve) }),
+		...(raw.in !== undefined && { in: await referenceValues(raw.in, resolve) }),
+		...(raw.not_in !== undefined && { notIn: await referenceValues(raw.not_in, resolve) }),
 		...(raw.min_length !== undefined && { minLength: raw.min_length }),
 		...(raw.max_length !== undefined && { maxLength: raw.max_length }),
 		...(raw.min !== undefined && { min: raw.min }),
@@ -126,8 +134,7 @@ async function compileApplication(
 	raw: RawApplication,
 	resolve: ValueResolver | undefined,
 ): Promise<FieldApplication> {
-	const one = (value: Scalar): Promise<Scalar> =>
-		resolve === undefined ? Promise.resolve(value) : resolve(value);
+	const one = (value: Scalar): Promise<Scalar> => resolveValue(value, resolve);
 	const values = (value: Scalar | readonly Scalar[]): Promise<Scalar | Scalar[]> =>
 		isScalarList(value) ? Promise.all(value.map((item) => one(item))) : one(value);
 	if (!isApplicationObject(raw)) {

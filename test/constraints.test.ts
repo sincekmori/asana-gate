@@ -56,12 +56,14 @@ describe("checkRequirement", () => {
 	});
 
 	it("checks value sets against references, lists and scalars", () => {
-		const requirement = { in: new Set(["51", "me"]) };
+		const requirement = { in: new Map([["51", "me"]]) };
 		expect(checkRequirement("51", requirement, { verb: "create" })).toStrictEqual([]);
 		expect(checkRequirement({ gid: "52" }, requirement, { verb: "create" })).toStrictEqual([
-			"must be one of 51, me",
+			"must be one of me (51)",
 		]);
 		expect(checkRequirement(["51", "52"], requirement, { verb: "create" })).toHaveLength(1);
+		// A name stands for the gid a request must send; the name itself is not a value Asana takes.
+		expect(checkRequirement("me", requirement, { verb: "create" })).toHaveLength(1);
 	});
 
 	it("checks numeric and date bounds", () => {

@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { constraintJson } from "../src/cli/explain.ts";
 import { expandActionPattern, expandGroup } from "../src/policy/actions.ts";
 import { compilePolicy } from "../src/policy/compile.ts";
 import { parsePolicy } from "../src/policy/load.ts";
@@ -108,12 +109,26 @@ describe("constraint values and member names", () => {
 `);
 		const constraints = policy.rules.find((rule) => rule.effect === "constrain")?.constraints;
 		const require = constraints?.require.get("task");
-		expect(require?.get("tags")?.notIn).toStrictEqual(new Set(["frozen", "42"]));
-		expect(require?.get("assignee")?.in).toStrictEqual(new Set(["me", "51"]));
-		expect(require?.get("custom_fields.61")?.in).toStrictEqual(new Set(["AI", "71"]));
+		// Each value as a request sends it, with how the policy wrote it.
+		expect(require?.get("tags")?.notIn).toStrictEqual(new Map([["42", "frozen"]]));
+		expect(require?.get("assignee")?.in).toStrictEqual(new Map([["51", "me"]]));
+		expect(require?.get("custom_fields.61")?.in).toStrictEqual(new Map([["71", "AI"]]));
 		const apply = constraints?.apply.get("task");
 		expect(apply?.get("tags")?.add).toStrictEqual(["41"]);
 		expect(apply?.get("custom_fields.61")?.default).toBe("71");
+	});
+
+	it("shows a requirement's values with the gids sent and its patterns as written", async () => {
+		const policy = await compile(`  - where: { project: "21" }
+    require:
+      task:
+        tags: { not_in: [frozen] }
+        name: { matches: "^AI: " }
+`);
+		const require = policy.rules.find((rule) => rule.effect === "constrain")?.constraints?.require;
+		const shown = (key: string): string => constraintJson(require?.get("task")?.get(key));
+		expect(shown("tags")).toBe('{"notIn":{"42":"frozen"}}');
+		expect(shown("name")).toBe('{"matches":"/^AI: /u"}');
 	});
 
 	it("rejects a misspelled operator instead of reading it as a nested name", () => {

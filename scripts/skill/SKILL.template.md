@@ -106,7 +106,7 @@ How a request is decided:
 2. **Actions.** `<resource>:<verb>` such as `task:update`; the groups `read`, `modify` (every verb but read), `write` (read plus every creating and modifying verb) and `admin` (everything); the wildcards `task:*` and `*:delete`.
    `read` is the prerequisite of every verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
    Updating `completed` needs `task:complete`, as does the `approval_status` of an approval task; `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; other members need `update`.
-   A custom field defined in place while it is put on a project or a table also needs `custom_field:create`, and one named by gid must be visible (`custom_field:read`).
+   A custom field defined in place while it is put on a project or a table also needs `custom_field:create`, and one named by gid must be visible (`custom_field:read`); taking a project's local field off again deletes it, so that also needs `custom_field:delete`.
    Explicit-only actions never come from a group or a wildcard and must be written out to be allowed: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`; in `deny`, `confirm` and `limit` a group or wildcard does cover them.
 3. **Which rule wins.** The most specific scope decides (task, then subtree, section, project, then team, portfolio or unhomed, then workspace), then the rule with more filters; at equal specificity `deny` wins; no matching rule means deny.
    Filters never make an object visible on their own: they widen or narrow what may be done with objects another rule already lets the agent read, and they can hide (`deny: [task:read]`).
@@ -115,6 +115,8 @@ How a request is decided:
    When several policy files are in force, every file must allow an action, each by its own rules (see "Several policies" in [references/policy.md](references/policy.md)).
 4. **Constraints** shape the requests made in a rule's scope and may stand alone, without `allow`: `require` (per resource and member, `true` for "must be present", or operators `prefix`, `suffix`, `contains`, `matches`, `not_matches`, `in`, `not_in`, `min_length`, `max_length`, `min`, `max`), `apply` (a bare default value, or `default`, `value`, `prefix`, `suffix`, `add`), `forbid` (members that may not be set), `redact` (members removed from responses), `limit` (`max` per `per`, such as `1h`), `confirm` (actions a person must approve).
    `apply` runs before `require`, so a prefix one rule adds satisfies the prefix another requires; every matching rule's `require` holds, the most specific rule's `apply` wins per member, and `forbid`, `redact` and `confirm` add up.
+   A request sends options, tags, projects and teams by gid, as Asana takes them, also where the policy names them; a refusal lists each allowed value with its gid.
+   Duplicating or instantiating a template is held to the constraints on the members its request sets (`name`, and a project's `team` and `privacy_setting`).
    Custom fields nest by name: `require: { task: { custom_fields: { Owner: { in: [AI] } } } }`.
 5. **`fields`** on an `allow` rule limits updates to the listed members: `allow: [read]` with `fields: { task: [completed, due_on] }` lets the agent update only those two (and complete, which `completed` stands for).
 

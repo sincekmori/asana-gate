@@ -120,11 +120,14 @@ function updateCheck(
  * resource's own create or update body, completed and checked by the
  * policy's constraints. `checked`: members of the resource that are not
  * shaped but still pass the update field allowlist (followers,
- * dependencies). `opaque`: the body describes something else (a duplicate,
- * an instantiation, an enum option, a metric, a portfolio item); only the
+ * dependencies). `derived`: the body makes the resource from a copy or a
+ * template (a duplicate, an instantiation); the members it carries itself
+ * (a `name`, a `privacy_setting`) are shaped as a create body's would be,
+ * and what the copy or template brings is left to it. `opaque`: the body describes
+ * something else (an enum option, a metric, a portfolio item); only the
  * action is checked and the body is sent as written.
  */
-type Shaping = "shaped" | "checked" | "opaque";
+type Shaping = "shaped" | "checked" | "derived" | "opaque";
 
 /** What a request must pass to act on `target`; creates and updates come with their body shaped by the policy. */
 async function writeCheck(
@@ -140,7 +143,11 @@ async function writeCheck(
 	if (shaping === "checked") {
 		return { check: verb === "update" ? updateCheck(target, resource, ctx.body) : plain };
 	}
-	const data = await ctx.shape(target.facts, { resource, verb });
+	const data = await ctx.shape(target.facts, {
+		resource,
+		verb,
+		...(shaping === "derived" && { members: new Set(ctx.spec.bodyParams) }),
+	});
 	return { check: verb === "update" ? updateCheck(target, resource, data) : plain, data };
 }
 
@@ -1140,14 +1147,14 @@ function createFromRule(options: CreateFromOptions): OperationRule {
 
 /**
  * `POST /project_templates/{gid}/instantiateProject`: the template is read, a
- * project is created in the team. The body (name, team, dates, roles)
- * instantiates the template, not a project body.
+ * project is created in the team. The body instantiates the template; its
+ * name, team and privacy are the project's own and are shaped as such.
  */
 const instantiateProjectRule = createFromRule({
 	from: "project_template",
 	read: true,
 	resource: "project",
-	shaping: "opaque",
+	shaping: "derived",
 });
 
 /** `POST /task_templates/{gid}/instantiateTask`: the template is read, a task is created in its project. */
@@ -1158,7 +1165,7 @@ const instantiateTaskRule = make(
 		const { check, data } = await writeCheck(ctx, template, {
 			resource: "task",
 			verb: "create",
-			shaping: "opaque",
+			shaping: "derived",
 		});
 		return {
 			checks: [{ ...check, actions: [actionOf("task_template", "read"), ...check.actions] }],
@@ -1332,22 +1339,55 @@ function addCustomFieldSetting(on: Resource): OperationRule {
 	);
 }
 
-/** `POST /<type>s/{gid}/removeCustomFieldSetting`. */
+/**
+ * `POST /<type>s/{gid}/removeCustomFieldSetting`. A custom field local to the
+ * object (defined in place, outside the workspace's library) goes with its
+ * setting, as live checks showed, so taking it off is planned as deleting it
+ * as well, the mirror of {@link defining}.
+ */
 function removeCustomFieldSetting(on: Resource): OperationRule {
-	return actOn({ on, verb: "delete", resource: "custom_field_setting", also: [CUSTOM_FIELD] });
+	const rule = actOn({
+		on,
+		verb: "delete",
+		resource: "custom_field_setting",
+		also: [CUSTOM_FIELD],
+	});
+	return {
+		...rule,
+		async plan(ctx) {
+			const plan = await rule.plan(ctx);
+			const field = plan.checks.find((check) => check.target.type === "custom_field")?.target;
+			if (field?.object?.is_global_to_workspace !== false) {
+				return plan;
+			}
+			const deleted = await ctx.planSub({
+				operationId: "deleteCustomField",
+				spec: OPERATIONS.deleteCustomField,
+				params: { custom_field_gid: field.gid },
+				query: {},
+				body: {},
+			});
+			return {
+				...plan,
+				checks: [...plan.checks, ...deleted.checks],
+				invalidate: [...(plan.invalidate ?? []), ...(deleted.invalidate ?? [])],
+			};
+		},
+	};
 }
 
-/** The gid-valued filters of `GET /workspaces/{gid}/tasks/search` (`projects.any`, …) and what they name. */
+/** The gid-valued filters of the task and record searches (`projects.any`, `tables.any`, …) and what they name. */
 const SEARCH_FILTERS: Readonly<Record<string, Resource>> = {
 	projects: "project",
 	sections: "section",
 	tags: "tag",
 	teams: "team",
 	portfolios: "portfolio",
+	tables: "table",
 	custom_fields: "custom_field",
 };
 
-/** The objects a task search names: the gids of its filters, and the custom fields its keys name. */
+/** The objects a task or record search names: the gids of its filters, and the custom fields its keys name. */
 function searchNamed(ctx: PlanContext): Named[] {
 	return Object.entries(ctx.query).flatMap(([key, value]): Named[] => {
 		const [member = "", field] = key.split(".");
@@ -1633,7 +1673,7 @@ const RULES = {
 	duplicatePortfolio: actOn({
 		on: "portfolio",
 		verb: "create",
-		shaping: "opaque",
+		shaping: "derived",
 	}),
 	// Project briefs
 	createProjectBrief: createUnder({
@@ -1684,7 +1724,7 @@ const RULES = {
 	duplicateProject: actOn({
 		on: "project",
 		verb: "create",
-		shaping: "opaque",
+		shaping: "derived",
 	}),
 	getProjectsForTask: listUnder({ under: "task", items: "project" }),
 	getProjectsForTeam: listUnder({ under: "team", items: "project" }),
@@ -1754,12 +1794,22 @@ const RULES = {
 		items: "record",
 		shared: true,
 	}),
-	searchRecordsForWorkspace: onWorkspace("record", "read", {
-		path: true,
-		response: "list",
-		scope: "filter",
+	searchRecordsForWorkspace: naming(
+		onWorkspace("record", "read", {
+			path: true,
+			response: "list",
+			scope: "filter",
+		}),
+		searchNamed,
+	),
+	createRecord: onBody({
+		resource: "record",
+		verb: "create",
+		field: "table",
+		types: ["table"],
+		response: "item",
+		shared: true,
 	}),
-	createRecord: onWorkspace("record", "create", { response: "item" }),
 	// Roles
 	getRoles: onWorkspace("role", "read", { query: "workspace", response: "list", scope: "filter" }),
 	createRole: onWorkspace("role", "create", { body: "workspace", response: "item" }),
@@ -1853,7 +1903,7 @@ const RULES = {
 		{ query: "tag", types: ["tag"] },
 	]),
 	createTask: createTaskRule("body"),
-	duplicateTask: actOn({ on: "task", verb: "create", shaping: "opaque" }),
+	duplicateTask: actOn({ on: "task", verb: "create", shaping: "derived" }),
 	getTasksForProject: listUnder({ under: "project", items: "task" }),
 	getTasksForSection: listUnder({ under: "section", items: "task" }),
 	getTasksForTag: listUnder({ under: "tag", items: "task" }),

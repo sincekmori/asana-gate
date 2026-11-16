@@ -125,13 +125,15 @@ function taskFields(needs: TaskNeeds): string[] {
 	];
 }
 
-/** Per resource, the `opt_fields` {@link FactsLoader.fromObject} needs. */
+/** Per resource, the `opt_fields` {@link FactsLoader.fromObject} needs, and those a plan reads off the loaded object. */
 const REQUIRED_FIELDS: Partial<Record<Resource, readonly string[]>> = {
 	// Tasks: see taskFields.
 	// `name` too: a `where: { name }` filter applies to projects and sections.
 	project: ["name", "workspace", "team"],
 	section: ["name", "project"],
 	portfolio: ["workspace"],
+	// Not a fact: whether taking the field off a project deletes it (a local field).
+	custom_field: ["is_global_to_workspace"],
 	team: ["organization"],
 	goal: ["workspace", "team"],
 	story: ["target"],

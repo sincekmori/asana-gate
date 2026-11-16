@@ -46,6 +46,14 @@ interface ShapeScope extends Scope {
 	readonly loader: Pick<FactsLoader, "userGid">;
 }
 
+/** What a request body creates or updates, and which of its members the constraints reach (all, without `members`). */
+interface ShapeTarget {
+	readonly resource: Resource;
+	readonly verb: "create" | "update";
+	/** The members a body made from a copy or a template may carry itself; the rest is the source's. */
+	readonly members?: ReadonlySet<string>;
+}
+
 /** A shaped request body, and the constraints it still breaks (empty when it satisfies them). */
 interface Shaped {
 	readonly data: Body;
@@ -73,12 +81,19 @@ async function withUserGids(value: unknown, loader: ShapeScope["loader"]): Promi
  */
 async function shapeBody(
 	scope: ShapeScope,
-	target: { resource: Resource; verb: "create" | "update" },
+	target: ShapeTarget,
 	body: Readonly<Body>,
 ): Promise<Shaped> {
 	const effective = constraintsFor(scope.policy, scope.facts);
+	const { members, resource } = target;
+	// A constraint reaches the body when it names one of the members the body may carry.
+	const reaches = (key: string): boolean =>
+		members === undefined || members.has(key.split(".")[0] ?? key);
+	const applied = [...(effective.apply.get(resource) ?? [])].filter(([key]) => reaches(key));
+	const forbidden = [...(effective.forbid.get(resource) ?? [])].filter((key) => reaches(key));
+	const required = [...(effective.require.get(resource) ?? [])].filter(([key]) => reaches(key));
 	let data = { ...body };
-	for (const [key, application] of effective.apply.get(target.resource) ?? []) {
+	for (const [key, application] of applied) {
 		const current = readMember(data, key);
 		const next = applyApplication(current, application, target.verb);
 		if (next !== current) {
@@ -86,13 +101,12 @@ async function shapeBody(
 		}
 	}
 	const problems: string[] = [];
-	for (const key of effective.forbid.get(target.resource) ?? []) {
+	for (const key of forbidden) {
 		if (readMember(data, key) !== undefined) {
 			problems.push(`${labelOf(effective, key)} may not be set`);
 		}
 	}
 	// A request is compared by the users it names, however it names them.
-	const required = [...(effective.require.get(target.resource) ?? [])];
 	const violations = await Promise.all(
 		required.map(async ([key, requirements]) => {
 			const member = readMember(data, key);
@@ -120,4 +134,4 @@ function redactObject(scope: Scope, resource: Resource, object: Body): Body {
 }
 
 export { redactObject, shapeBody };
-export type { Scope, Shaped };
+export type { Scope, Shaped, ShapeTarget };
