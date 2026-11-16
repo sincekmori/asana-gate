@@ -1,5 +1,11 @@
 # asana-gate
 
+## 0.4.1
+
+### Patch Changes
+
+- 9c5cff8: A custom field that a request puts on or takes off a project, a portfolio, a goal or a table by gid must now be visible to the policy, like any other object a request names: without `custom_field:read` the request answers 404 where it used to pass.
+
 ## 0.4.0
 
 ### Minor Changes
