@@ -185,7 +185,7 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 
 `read` is the prerequisite of every other verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
 
-Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, and so does the `approval_status` of an approval task, which Asana keeps in step with it (a new approval task in a status other than pending counts as completed, too); its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`, a section's `insert_before` or `insert_after` needs `section:reorder`; every other member needs `update`.
+Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, and so does the `approval_status` of an approval task, which Asana keeps in step with it (a new approval task in a status other than pending counts as completed, too); its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; every other member needs `update`.
 A custom field defined in place where one is put on a project, a portfolio, a goal or a table is created by that request, so it needs `custom_field:create` in the workspace as well, and the constraints on `custom_field` shape the definition.
 One named by gid must be visible to the policy, like any object a request names, to be put on and to be taken off.
 
@@ -531,6 +531,8 @@ Some behaviors worth knowing:
 - `POST /tasks` needs `projects`, `parent` or `workspace`; `memberships` alone is rejected, so the `asana_create_task` tool sends `projects` together with `memberships` when a section is given.
 - `POST /sections/{gid}/addTask` adds a task from another project to the section's project; asana-gate therefore requires `task:create` there as well as `task:move`.
 - A task's `parent` cannot be changed through `PUT /tasks/{gid}`; use `setParent`.
+- `PUT /sections/{gid}` changes a section's name alone: it requires `name`, and answers 200 to `insert_before` or `insert_after` without moving the section, so moving one is `POST /projects/{gid}/sections/insert` and `section:reorder`.
+- `POST /sections/{gid}/addTask` on a subtask that has no project of its own (it shows in its parent's project) makes it a member of the section's project, so asana-gate requires `task:create` for it too.
 - Batch actions carry query parameters in `data`, not in `relative_path`.
 - The Search API, custom fields, portfolios, goals, task dependencies, milestones, and tables and records are unavailable on free workspaces (402); the gate passes such responses through.
 - `POST /projects/{gid}/removeMembers` refuses `me`, which `addMembers` takes, so `asana_remove_project_members` wants gids.

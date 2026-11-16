@@ -227,7 +227,7 @@ rules:
 		await expect(gate.authorize(addToBacklog("101"))).resolves.toBeDefined();
 	});
 
-	it("needs section:reorder to move a section by updating it", async () => {
+	it("judges a section update as the rename it is, since Asana moves no section that way", async () => {
 		const policy = `
 version: 1
 workspace: "1"
@@ -236,15 +236,16 @@ rules:
   - where: { project: "21" }
     allow: [section:update]
 `;
-		const move: GateRequest = {
+		// Asana answers 200 to insert_before on PUT /sections and leaves the order as it was (verified live).
+		const rename: GateRequest = {
 			method: "PUT",
 			path: "/sections/32",
-			body: { insert_before: "31" },
+			body: { name: "Done", insert_before: "31" },
 		};
 		const { gate } = await setupGate(policy);
-		await expect(gate.authorize(move)).rejects.toMatchObject({ status: 403 });
+		await expect(gate.authorize(rename)).resolves.toBeDefined();
 		const { gate: reorder } = await setupGate(policy.replace("section:update", "section:reorder"));
-		await expect(reorder.authorize(move)).resolves.toBeDefined();
+		await expect(reorder.authorize(rename)).rejects.toMatchObject({ status: 403 });
 	});
 
 	it("lets a `fields` allowlist grant dependencies and dependents", async () => {
