@@ -1287,18 +1287,20 @@ function naming(rule: OperationRule, named: (ctx: PlanContext) => readonly Named
 }
 
 /**
- * `rule` for a body that may define a new object in `field` where it would
- * name one: the definition is planned as `operation`, the object's own POST,
- * so creating it in place needs the same checks and gets the same shaping.
+ * `rule` for a body that names an object in `ref.field` or defines a new one
+ * there. A named one must be visible, like any object a body names; a
+ * definition is planned as `operation`, the object's own POST, so creating
+ * it in place needs the same checks and gets the same shaping.
  */
-function defining(rule: OperationRule, field: string, operation: OperationId): OperationRule {
+function defining(rule: OperationRule, ref: BodyRef, operation: OperationId): OperationRule {
+	const { field } = ref;
 	return {
 		...rule,
 		async plan(ctx) {
 			const plan = await rule.plan(ctx);
 			const value = ctx.body[field];
 			if (!isObject(value)) {
-				return plan;
+				return { ...plan, checks: [...plan.checks, ...(await bodyRefs(ctx, [ref]))] };
 			}
 			const spec = OPERATIONS[operation];
 			const sub = await ctx.planSub({
@@ -1318,13 +1320,21 @@ function defining(rule: OperationRule, field: string, operation: OperationId): O
 	};
 }
 
+/** The custom field a custom field setting is of. */
+const CUSTOM_FIELD: BodyRef = { field: "custom_field", types: ["custom_field"] };
+
 /** `POST /<type>s/{gid}/addCustomFieldSetting`: the custom field is an existing one by gid, or a new one defined in place. */
 function addCustomFieldSetting(on: Resource): OperationRule {
 	return defining(
 		actOn({ on, verb: "create", resource: "custom_field_setting" }),
-		"custom_field",
+		CUSTOM_FIELD,
 		"createCustomField",
 	);
+}
+
+/** `POST /<type>s/{gid}/removeCustomFieldSetting`. */
+function removeCustomFieldSetting(on: Resource): OperationRule {
+	return actOn({ on, verb: "delete", resource: "custom_field_setting", also: [CUSTOM_FIELD] });
 }
 
 /** The gid-valued filters of `GET /workspaces/{gid}/tasks/search` (`projects.any`, …) and what they name. */
@@ -1552,11 +1562,7 @@ const RULES = {
 	}),
 	getParentGoalsForGoal: listUnder({ under: "goal", items: "goal" }),
 	addCustomFieldSettingForGoal: addCustomFieldSetting("goal"),
-	removeCustomFieldSettingForGoal: actOn({
-		on: "goal",
-		verb: "delete",
-		resource: "custom_field_setting",
-	}),
+	removeCustomFieldSettingForGoal: removeCustomFieldSetting("goal"),
 	// Jobs
 	// An item, so the objects a job created (`new_project`, `new_task`) are checked like any nested reference.
 	getJob: onWorkspace("job", "read", { response: "item" }),
@@ -1613,11 +1619,7 @@ const RULES = {
 	addItemForPortfolio: portfolioItemRule,
 	removeItemForPortfolio: portfolioItemRule,
 	addCustomFieldSettingForPortfolio: addCustomFieldSetting("portfolio"),
-	removeCustomFieldSettingForPortfolio: actOn({
-		on: "portfolio",
-		verb: "delete",
-		resource: "custom_field_setting",
-	}),
+	removeCustomFieldSettingForPortfolio: removeCustomFieldSetting("portfolio"),
 	addMembersForPortfolio: actOn({
 		on: "portfolio",
 		verb: "manage_members",
@@ -1699,11 +1701,7 @@ const RULES = {
 		scope: "filter",
 	}),
 	addCustomFieldSettingForProject: addCustomFieldSetting("project"),
-	removeCustomFieldSettingForProject: actOn({
-		on: "project",
-		verb: "delete",
-		resource: "custom_field_setting",
-	}),
+	removeCustomFieldSettingForProject: removeCustomFieldSetting("project"),
 	getTaskCountsForProject: actOn({ on: "project", verb: "read" }),
 	addMembersForProject: actOn({
 		on: "project",
@@ -1822,11 +1820,7 @@ const RULES = {
 	}),
 	createTable: onWorkspace("table", "create", { body: "workspace", response: "item" }),
 	addCustomFieldSettingForTable: addCustomFieldSetting("table"),
-	removeCustomFieldSettingForTable: actOn({
-		on: "table",
-		verb: "delete",
-		resource: "custom_field_setting",
-	}),
+	removeCustomFieldSettingForTable: removeCustomFieldSetting("table"),
 	getCustomFieldSettingsForTableLegacy: listUnder({
 		under: "table",
 		items: "custom_field_setting",

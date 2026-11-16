@@ -106,7 +106,7 @@ How a request is decided:
 2. **Actions.** `<resource>:<verb>` such as `task:update`; the groups `read`, `modify` (every verb but read), `write` (read plus every creating and modifying verb) and `admin` (everything); the wildcards `task:*` and `*:delete`.
    `read` is the prerequisite of every verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
    Updating `completed` needs `task:complete`, as does the `approval_status` of an approval task; `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; other members need `update`.
-   A custom field defined in place while it is put on a project or a table also needs `custom_field:create`.
+   A custom field defined in place while it is put on a project or a table also needs `custom_field:create`, and one named by gid must be visible (`custom_field:read`).
    Explicit-only actions never come from a group or a wildcard and must be written out to be allowed: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`; in `deny`, `confirm` and `limit` a group or wildcard does cover them.
 3. **Which rule wins.** The most specific scope decides (task, then subtree, section, project, then team, portfolio or unhomed, then workspace), then the rule with more filters; at equal specificity `deny` wins; no matching rule means deny.
    Filters never make an object visible on their own: they widen or narrow what may be done with objects another rule already lets the agent read, and they can hide (`deny: [task:read]`).

@@ -92,4 +92,27 @@ rules:
 		await expect(created({ completed: true })).resolves.toBe(403);
 		await expect(created({ approval_status: "approved" })).resolves.toBe(403);
 	});
+
+	it("takes a custom field named by gid for an object the policy must show, to put it on and to take it off", async () => {
+		const { fake, gate } = await setupGate(`
+version: 1
+workspace: "1"
+rules:
+  - allow: [workspace:read, project:read]
+  - where: { project: "21" }
+    allow: [custom_field_setting:create, custom_field_setting:delete]
+`);
+		const named = { custom_field: "61" };
+		const put = await gate.execute({
+			method: "POST",
+			path: "/projects/21/addCustomFieldSetting",
+			body: named,
+		});
+		expect(put.status).toBe(404);
+		expect(message(put.body)).toBe("custom_field: Not a recognized ID: 61");
+		await expect(
+			gate.execute({ method: "POST", path: "/projects/21/removeCustomFieldSetting", body: named }),
+		).resolves.toMatchObject({ status: 404 });
+		expect(fake.calls.filter((call) => call.method === "POST")).toHaveLength(0);
+	});
 });
