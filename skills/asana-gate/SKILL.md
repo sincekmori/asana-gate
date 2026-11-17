@@ -14,6 +14,7 @@ metadata:
 asana-gate is a policy gateway in front of the Asana REST API.
 A YAML policy says, per scope (workspace, team, portfolio, project, section, task), which actions an agent may take and how its requests are shaped; the gate enforces it on every request, whether it arrives as an MCP tool call or as an `asana-gate` command.
 Everything you can see or do through it is decided by that policy, not by Asana: objects the policy hides do not exist for you, and refusals come back as HTTP-style errors whose message starts with `asana-gate:`.
+Where asana-gate governs a project, reach Asana only through it, not through Asana's own `asana-cli` or any other API client, even when a token is at hand.
 
 ## Read the gate's answers first
 

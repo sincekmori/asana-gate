@@ -485,6 +485,10 @@ The `asana.enable` and `asana.disable` settings send those headers on every requ
 
 ## Agents
 
+A token an agent's shell can see is a token the agent can use without the gate.
+Asana's own command line, `asana-cli` ([`@asana-api/cli`](https://developers.asana.com/docs/asana-cli)), is made for agents with a terminal: it reads `ASANA_ACCESS_TOKEN` by default and sends changes and deletions with no policy and no confirmation.
+So do not export the token where an agent runs commands: save it with `asana-gate token set`, and tell the agent that Asana is reached only through asana-gate, as the instructions `init --agent` prints do.
+
 ### The skill
 
 [`skills/asana-gate`](skills/asana-gate) is an [Agent Skill](https://agentskills.io) that teaches an agent how asana-gate answers, how to work through its tools and commands, and how to write a policy.
@@ -507,10 +511,10 @@ Commit those with the policy, then say in `CLAUDE.md` what the command prints:
 Tasks for this repository live in the Asana project "<project>", reached only through asana-gate:
 the `asana-gate` MCP server in .mcp.json, governed by .asana-gate/policy.yaml.
 Read .claude/skills/asana-gate/SKILL.md before touching Asana.
-Never call the Asana API any other way, and never read .asana-gate/token.
+Never call the Asana API any other way (Asana's own `asana-cli` included), and never read .asana-gate/token.
 ```
 
-Each person saves their own token with `asana-gate token set` (or exports it), and the policy, reviewed like code, is the whole of what the agent may do.
+Each person saves their own token with `asana-gate token set` rather than exporting it, which would hand it to the agent's shell, and the policy, reviewed like code, is the whole of what the agent may do.
 The copy of the skill keeps itself current: whenever `asana-gate mcp` starts in the project with another version than the copy carries, it rewrites the copy, so an upgrade of the pin in `.mcp.json` shows up as a change to commit.
 The Claude Code extension for VS Code reads the same `.mcp.json`.
 
@@ -520,7 +524,7 @@ The Claude Code extension for VS Code reads the same `.mcp.json`.
 VS Code starts the server without asking once the workspace is trusted; `.vscode/mcp.json`, the file of its deprecated Local agent harness, is not written.
 An existing file is changed only where the server goes, so its comments stay.
 The command prints the paragraph for `.github/copilot-instructions.md` or `AGENTS.md`.
-Neither editor can be told to keep its agent from reading a file in the project, so with them keep the token out of it: `asana-gate token set --user`, or the environment variable.
+Neither editor can be told to keep its agent from reading a file, so with them keep the token out of the project with `asana-gate token set --user`, not in a variable their terminal inherits, and rely on the instructions the command prints.
 For Codex, the skill copy is enough on the file side; register the server with `codex mcp add asana-gate -- npx -y asana-gate@<version> mcp`.
 
 ### Hosts without MCP

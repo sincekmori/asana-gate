@@ -164,7 +164,7 @@ function instructionsFor(agent: Agent): string {
 		"",
 		`Tasks for this repository live in the Asana project "<project>", reached only through asana-gate: the \`asana-gate\` MCP server in ${agent.mcpFile}, governed by ${PROJECT_DIR}/${POLICY_FILE}.`,
 		`Read ${join(agent.skillsDirs[0], SKILL, "SKILL.md")} before touching Asana.`,
-		`Never call the Asana API any other way, and never read ${PROJECT_DIR}/${TOKEN_FILE}.`,
+		`Never call the Asana API any other way (Asana's own \`asana-cli\` included), and never read ${PROJECT_DIR}/${TOKEN_FILE}.`,
 	].join("\n");
 }
 
