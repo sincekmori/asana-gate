@@ -1,5 +1,15 @@
 # asana-gate
 
+## 0.4.2
+
+### Patch Changes
+
+- bdb107b: Duplicating a project, a portfolio or a task and instantiating a project or task template are now held to the constraints on the members their request sets, as a create of its own would be (the `name`, and an instantiated project's `team` and `privacy_setting`), where they used to pass unshaped, so a template could make a project the policy's `require` forbids (verified live); what the template or the copy brings is left to it.
+- bdb107b: Taking a local custom field (one outside the workspace's library, such as a field defined in place on a project) off a project, a portfolio, a goal or a table now needs `custom_field:delete` as well as `custom_field_setting:delete`, because Asana deletes such a field with its setting (verified live), and the README now says that project templates follow their team rather than a project.
+- bdb107b: An `in` or `not_in` requirement now admits only the values Asana takes, the gids of the options, tags, projects and teams the policy names (users still by `me` or an email as well), where it used to pass their names on to a refusal from Asana (verified live); its refusal lists each value with its gid, and `asana-gate explain` shows such sets and patterns instead of `{}`.
+- bdb107b: Creating a record now needs the table it goes into to be visible to the policy, and a record search may filter only by tables and teams the policy shows, like every other object a request names (a policy without `table:read` could put records into any table, verified live).
+- 39d163d: `PUT /sections/{gid}` needs `section:update` alone again, also when it carries `insert_before` or `insert_after`: Asana changes only a section's name there and leaves the order as it was (verified live), so asking for `section:reorder` refused renames that moved nothing.
+
 ## 0.4.1
 
 ### Patch Changes
