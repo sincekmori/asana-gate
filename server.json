@@ -7,12 +7,12 @@
     "url": "https://github.com/sincekmori/asana-gate",
     "source": "github"
   },
-  "version": "0.4.3",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "asana-gate",
-      "version": "0.4.3",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       },

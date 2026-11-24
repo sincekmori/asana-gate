@@ -1,5 +1,22 @@
 # asana-gate
 
+## 0.5.0
+
+### Minor Changes
+
+- 8725179: `asana_allowed_actions` now also tells the constraints in force where the object is, as `constraints`, so an agent can write a request that fits instead of learning each constraint from a refusal: per resource and member what a create or update must carry (`require`) or may not set (`forbid`), what the policy fills in (`apply`) or leaves out of answers (`redact`), and per action the caps (`limit`) and the confirmations (`confirm`), each value with the gid to send.
+  The operators read as a policy writes them, which `asana-gate explain` now does too (`not_in` where it printed `notIn`).
+- 8725179: Every object is now answered with the fields the request asked for, as a `GET` by gid already was: the members the gate reads beside them to judge an object (a task's `workspace`, `parent` and `memberships`, a project's `team`) no longer come back in the items of a list or in the answer to a write that names `opt_fields`.
+  The items of a list asked for without `opt_fields` carry their `gid` and name (or what tells apart an object that has no name) and their `allowed_actions`, so ask for the members you need: a caller that read `memberships` or `parent` off a list without asking for them must now name them.
+  Nothing is loaded from Asana any more to check a member the answer leaves out: a list of projects, for one, no longer costs a request per team its projects are in.
+
+### Patch Changes
+
+- 8725179: The MCP server no longer lists a tool for an action that a policy file allows and denies over the very same scope (`allow: ["task:*"]` with `deny: [task:delete]` beside it listed `asana_delete_task`, whose every call was refused), and `asana-gate check` no longer counts such an action among the explicit-only actions granted.
+  Nor does a `read` that only a filter rule allows count any more, since a tag, assignee, custom field or state filter never makes an object visible: the reading tools such a rule alone stood behind were listed for nothing.
+- 8725179: `init --agent claude-code` now also denies reading the token file in the home directory and lists the token's variable under `sandbox.credentials.envVars`: with Claude Code's sandbox on, no command the agent runs finds the token files or the variable, `asana-gate` in its shell included, while the MCP server still reads the token.
+  The README now tells the two apart: instructions keep an agent that follows them to the gate wherever the token is, and only a token out of the agent's reach makes the policy hold against one that does not.
+
 ## 0.4.3
 
 ### Patch Changes
