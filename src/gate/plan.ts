@@ -55,21 +55,22 @@ type ResponsePlan =
 			readonly facts?: Facts;
 			readonly verify?: boolean;
 			readonly loaded?: AsanaObject;
-			/** The caller's `opt_fields`, which the object is cut back to once checked (the gate asked for more). */
+			/** The fields kept, which the object is cut back to once checked (the gate asked for more). */
 			readonly selection?: Selection;
 	  }
 	/**
 	 * `data` is a list of objects of `type` (or of mixed types): drop invisible
-	 * ones, attach `allowed_actions`. The items of a mixed list expected to be
-	 * of the `expect` types are asked for what their facts need and judged by
-	 * themselves; one that lacks it (Asana may not honour a selection on every
-	 * path) is loaded by gid, like every item of a list that expects nothing.
+	 * ones, attach `allowed_actions`, cut each back to `selection` as an item is.
+	 * An item of a mixed list of one of the `expect` types is asked for what its
+	 * facts need and judged by itself; one that lacks it (Asana may not honour a
+	 * selection on every path) or is of another type is loaded by gid.
 	 */
 	| {
 			readonly kind: "list";
 			readonly type: Resource | "mixed";
 			readonly facts?: Facts;
 			readonly expect?: readonly Resource[];
+			readonly selection?: Selection;
 	  }
 	/** Custom handling of the whole body. */
 	| {
@@ -96,7 +97,6 @@ interface Read {
 		readonly body: Record<string, unknown>;
 		/** The object whose embedded ancestors carry their placement (the loader's fetch of it). */
 		readonly placement?: AsanaObject;
-		readonly selection?: Selection;
 	};
 }
 
@@ -214,10 +214,7 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 			const target = visible(type, named, loaded);
 			const placement = loaded?.fetched ?? loaded?.object;
 			const body = { data: target.object };
-			return {
-				target,
-				answer: { body, ...(placement && { placement }), ...(selection && { selection }) },
-			};
+			return { target, answer: { body, ...(placement && { placement }) } };
 		},
 		async probe(gid, types) {
 			const label = types[0] ?? "object";

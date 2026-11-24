@@ -10,35 +10,35 @@ Full-text and filtered task search in the workspace (Asana Search API; paid plan
 
 Command line: `asana-gate task search`
 
-| Input                 | Command-line form                | Required | Meaning                                                                         |
-| --------------------- | -------------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `text`                | `--text <string>`                | no       | Free-text query                                                                 |
-| `resource_subtype`    | `--resource-subtype <string>`    | no       | one of default_task, milestone, approval                                        |
-| `assignee_any`        | `--assignee-any <value,...>`     | no       | User gids, emails or "me"                                                       |
-| `created_by_any`      | `--created-by-any <value,...>`   | no       | User gids, emails or "me"                                                       |
-| `followers_any`       | `--followers-any <value,...>`    | no       | User gids, emails or "me"                                                       |
-| `projects_any`        | `--projects-any <value,...>`     | no       |                                                                                 |
-| `sections_any`        | `--sections-any <value,...>`     | no       |                                                                                 |
-| `tags_any`            | `--tags-any <value,...>`         | no       |                                                                                 |
-| `completed`           | `--completed`                    | no       |                                                                                 |
-| `is_subtask`          | `--is-subtask`                   | no       |                                                                                 |
-| `due_on`              | `--due-on <string>`              | no       |                                                                                 |
-| `due_on_before`       | `--due-on-before <string>`       | no       |                                                                                 |
-| `due_on_after`        | `--due-on-after <string>`        | no       |                                                                                 |
-| `created_on_before`   | `--created-on-before <string>`   | no       |                                                                                 |
-| `created_on_after`    | `--created-on-after <string>`    | no       |                                                                                 |
-| `created_at_before`   | `--created-at-before <string>`   | no       | ISO 8601 date-time                                                              |
-| `created_at_after`    | `--created-at-after <string>`    | no       | ISO 8601 date-time                                                              |
-| `completed_on_before` | `--completed-on-before <string>` | no       |                                                                                 |
-| `completed_on_after`  | `--completed-on-after <string>`  | no       |                                                                                 |
-| `completed_at_before` | `--completed-at-before <string>` | no       | ISO 8601 date-time                                                              |
-| `completed_at_after`  | `--completed-at-after <string>`  | no       | ISO 8601 date-time                                                              |
-| `modified_on_after`   | `--modified-on-after <string>`   | no       |                                                                                 |
-| `modified_at_after`   | `--modified-at-after <string>`   | no       | ISO 8601 date-time                                                              |
-| `sort_by`             | `--sort-by <string>`             | no       | one of due_date, created_at, completed_at, likes, modified_at                   |
-| `sort_ascending`      | `--sort-ascending`               | no       |                                                                                 |
-| `limit`               | `--limit <number>`               | no       | Page size (1-100)                                                               |
-| `opt_fields`          | `--opt-fields <value,...>`       | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input                 | Command-line form                | Required | Meaning                                                                                                               |
+| --------------------- | -------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `text`                | `--text <string>`                | no       | Free-text query                                                                                                       |
+| `resource_subtype`    | `--resource-subtype <string>`    | no       | one of default_task, milestone, approval                                                                              |
+| `assignee_any`        | `--assignee-any <value,...>`     | no       | User gids, emails or "me"                                                                                             |
+| `created_by_any`      | `--created-by-any <value,...>`   | no       | User gids, emails or "me"                                                                                             |
+| `followers_any`       | `--followers-any <value,...>`    | no       | User gids, emails or "me"                                                                                             |
+| `projects_any`        | `--projects-any <value,...>`     | no       |                                                                                                                       |
+| `sections_any`        | `--sections-any <value,...>`     | no       |                                                                                                                       |
+| `tags_any`            | `--tags-any <value,...>`         | no       |                                                                                                                       |
+| `completed`           | `--completed`                    | no       |                                                                                                                       |
+| `is_subtask`          | `--is-subtask`                   | no       |                                                                                                                       |
+| `due_on`              | `--due-on <string>`              | no       |                                                                                                                       |
+| `due_on_before`       | `--due-on-before <string>`       | no       |                                                                                                                       |
+| `due_on_after`        | `--due-on-after <string>`        | no       |                                                                                                                       |
+| `created_on_before`   | `--created-on-before <string>`   | no       |                                                                                                                       |
+| `created_on_after`    | `--created-on-after <string>`    | no       |                                                                                                                       |
+| `created_at_before`   | `--created-at-before <string>`   | no       | ISO 8601 date-time                                                                                                    |
+| `created_at_after`    | `--created-at-after <string>`    | no       | ISO 8601 date-time                                                                                                    |
+| `completed_on_before` | `--completed-on-before <string>` | no       |                                                                                                                       |
+| `completed_on_after`  | `--completed-on-after <string>`  | no       |                                                                                                                       |
+| `completed_at_before` | `--completed-at-before <string>` | no       | ISO 8601 date-time                                                                                                    |
+| `completed_at_after`  | `--completed-at-after <string>`  | no       | ISO 8601 date-time                                                                                                    |
+| `modified_on_after`   | `--modified-on-after <string>`   | no       |                                                                                                                       |
+| `modified_at_after`   | `--modified-at-after <string>`   | no       | ISO 8601 date-time                                                                                                    |
+| `sort_by`             | `--sort-by <string>`             | no       | one of due_date, created_at, completed_at, likes, modified_at                                                         |
+| `sort_ascending`      | `--sort-ascending`               | no       |                                                                                                                       |
+| `limit`               | `--limit <number>`               | no       | Page size (1-100)                                                                                                     |
+| `opt_fields`          | `--opt-fields <value,...>`       | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_tasks` — List tasks (read-only)
 
@@ -46,18 +46,18 @@ Lists tasks in a project, a section, with a tag, or assigned to a user (one of p
 
 Command line: `asana-gate task list`
 
-| Input             | Command-line form            | Required | Meaning                                                                         |
-| ----------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `project`         | `--project <string>`         | no       |                                                                                 |
-| `section`         | `--section <string>`         | no       |                                                                                 |
-| `tag`             | `--tag <string>`             | no       |                                                                                 |
-| `assignee`        | `--assignee <string>`        | no       | User gid, email or "me" (needs workspace)                                       |
-| `workspace`       | `--workspace <string>`       | no       | Workspace gid; defaults to the policy's workspace                               |
-| `completed_since` | `--completed-since <string>` | no       | ISO date-time, or "now" for incomplete tasks only                               |
-| `modified_since`  | `--modified-since <string>`  | no       | ISO 8601 date-time                                                              |
-| `limit`           | `--limit <number>`           | no       | Page size (1-100)                                                               |
-| `offset`          | `--offset <string>`          | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields`      | `--opt-fields <value,...>`   | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input             | Command-line form            | Required | Meaning                                                                                                               |
+| ----------------- | ---------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `project`         | `--project <string>`         | no       |                                                                                                                       |
+| `section`         | `--section <string>`         | no       |                                                                                                                       |
+| `tag`             | `--tag <string>`             | no       |                                                                                                                       |
+| `assignee`        | `--assignee <string>`        | no       | User gid, email or "me" (needs workspace)                                                                             |
+| `workspace`       | `--workspace <string>`       | no       | Workspace gid; defaults to the policy's workspace                                                                     |
+| `completed_since` | `--completed-since <string>` | no       | ISO date-time, or "now" for incomplete tasks only                                                                     |
+| `modified_since`  | `--modified-since <string>`  | no       | ISO 8601 date-time                                                                                                    |
+| `limit`           | `--limit <number>`           | no       | Page size (1-100)                                                                                                     |
+| `offset`          | `--offset <string>`          | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields`      | `--opt-fields <value,...>`   | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_task` — Get task (read-only)
 
@@ -65,13 +65,13 @@ Reads one task with its full fields and allowed_actions and, when asked, its lat
 
 Command line: `asana-gate task get <task_gid>`
 
-| Input              | Command-line form          | Required | Meaning                                                                         |
-| ------------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `task_gid`         | `<task_gid>` (positional)  | yes      |                                                                                 |
-| `include_comments` | `--include-comments`       | no       | Also answer the latest comments, newest first, as comments                      |
-| `comment_limit`    | `--comment-limit <number>` | no       | How many comments (10 by default)                                               |
-| `include_subtasks` | `--include-subtasks`       | no       | Also answer the direct subtasks, as subtasks                                    |
-| `opt_fields`       | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input              | Command-line form          | Required | Meaning                                                                                                               |
+| ------------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `task_gid`         | `<task_gid>` (positional)  | yes      |                                                                                                                       |
+| `include_comments` | `--include-comments`       | no       | Also answer the latest comments, newest first, as comments                                                            |
+| `comment_limit`    | `--comment-limit <number>` | no       | How many comments (10 by default)                                                                                     |
+| `include_subtasks` | `--include-subtasks`       | no       | Also answer the direct subtasks, as subtasks                                                                          |
+| `opt_fields`       | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_task` — Create task
 
@@ -159,12 +159,12 @@ Lists the direct subtasks of a task.
 
 Command line: `asana-gate task subtasks <task_gid>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `task_gid`   | `<task_gid>` (positional)  | yes      |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `task_gid`   | `<task_gid>` (positional)  | yes      |                                                                                                                       |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_subtask` — Create subtask
 
@@ -336,15 +336,15 @@ Lists the comments and activity (stories) of a task.
 
 Command line: `asana-gate task comments <task_gid>`
 
-| Input              | Command-line form             | Required | Meaning                                                                         |
-| ------------------ | ----------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `task_gid`         | `<task_gid>` (positional)     | yes      |                                                                                 |
-| `created_after`    | `--created-after <string>`    | no       | ISO 8601 date-time                                                              |
-| `resource_subtype` | `--resource-subtype <string>` | no       | Comments only; one of comment_added                                             |
-| `sort_ascending`   | `--sort-ascending`            | no       | Oldest first (the default) or newest first                                      |
-| `limit`            | `--limit <number>`            | no       | Page size (1-100)                                                               |
-| `offset`           | `--offset <string>`           | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields`       | `--opt-fields <value,...>`    | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input              | Command-line form             | Required | Meaning                                                                                                               |
+| ------------------ | ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `task_gid`         | `<task_gid>` (positional)     | yes      |                                                                                                                       |
+| `created_after`    | `--created-after <string>`    | no       | ISO 8601 date-time                                                                                                    |
+| `resource_subtype` | `--resource-subtype <string>` | no       | Comments only; one of comment_added                                                                                   |
+| `sort_ascending`   | `--sort-ascending`            | no       | Oldest first (the default) or newest first                                                                            |
+| `limit`            | `--limit <number>`            | no       | Page size (1-100)                                                                                                     |
+| `offset`           | `--offset <string>`           | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields`       | `--opt-fields <value,...>`    | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_comment` — Comment on task
 
@@ -388,12 +388,12 @@ Lists the attachments of a task or project brief.
 
 Command line: `asana-gate attachment list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `parent`     | `--parent <string>`        | yes      |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `parent`     | `--parent <string>`        | yes      |                                                                                                                       |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_attachment` — Get attachment (read-only)
 
@@ -401,10 +401,10 @@ Reads an attachment, including its download URL.
 
 Command line: `asana-gate attachment get <attachment_gid>`
 
-| Input            | Command-line form               | Required | Meaning                                                                         |
-| ---------------- | ------------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `attachment_gid` | `<attachment_gid>` (positional) | yes      |                                                                                 |
-| `opt_fields`     | `--opt-fields <value,...>`      | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input            | Command-line form               | Required | Meaning                                                                                                               |
+| ---------------- | ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `attachment_gid` | `<attachment_gid>` (positional) | yes      |                                                                                                                       |
+| `opt_fields`     | `--opt-fields <value,...>`      | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_attachment` — Create attachment
 
@@ -437,14 +437,14 @@ Lists projects of the workspace or of a team. Each project carries allowed_actio
 
 Command line: `asana-gate project list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                               |
-| `team`       | `--team <string>`          | no       |                                                                                 |
-| `archived`   | `--archived`               | no       |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                                                                     |
+| `team`       | `--team <string>`          | no       |                                                                                                                       |
+| `archived`   | `--archived`               | no       |                                                                                                                       |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_project` — Get project (read-only)
 
@@ -452,12 +452,12 @@ Reads one project and, when asked, its sections and its task counts in the same 
 
 Command line: `asana-gate project get <project_gid>`
 
-| Input                 | Command-line form            | Required | Meaning                                                                         |
-| --------------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `project_gid`         | `<project_gid>` (positional) | yes      |                                                                                 |
-| `include_sections`    | `--include-sections`         | no       | Also answer the sections, as sections                                           |
-| `include_task_counts` | `--include-task-counts`      | no       | Also answer the counts of its tasks, hidden ones too, as task_counts            |
-| `opt_fields`          | `--opt-fields <value,...>`   | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input                 | Command-line form            | Required | Meaning                                                                                                               |
+| --------------------- | ---------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `project_gid`         | `<project_gid>` (positional) | yes      |                                                                                                                       |
+| `include_sections`    | `--include-sections`         | no       | Also answer the sections, as sections                                                                                 |
+| `include_task_counts` | `--include-task-counts`      | no       | Also answer the counts of its tasks, hidden ones too, as task_counts                                                  |
+| `opt_fields`          | `--opt-fields <value,...>`   | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_project` — Create project
 
@@ -579,12 +579,12 @@ Lists the sections of a project.
 
 Command line: `asana-gate section list`
 
-| Input         | Command-line form          | Required | Meaning                                                                         |
-| ------------- | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `project_gid` | `--project <string>`       | yes      |                                                                                 |
-| `limit`       | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`      | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields`  | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input         | Command-line form          | Required | Meaning                                                                                                               |
+| ------------- | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `project_gid` | `--project <string>`       | yes      |                                                                                                                       |
+| `limit`       | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`      | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields`  | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_section` — Create section
 
@@ -626,12 +626,12 @@ Lists the status updates of a project, portfolio or goal.
 
 Command line: `asana-gate status list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `parent`     | `--parent <string>`        | yes      |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `parent`     | `--parent <string>`        | yes      |                                                                                                                       |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_status_update` — Create status update
 
@@ -653,9 +653,9 @@ Reads the workspace the policy governs.
 
 Command line: `asana-gate workspace get`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_me` — Get current user (read-only)
 
@@ -663,9 +663,9 @@ Reads the user the access token belongs to.
 
 Command line: `asana-gate user me`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_users` — List users (read-only)
 
@@ -673,13 +673,13 @@ Lists the users of the workspace or of a team.
 
 Command line: `asana-gate user list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                               |
-| `team`       | `--team <string>`          | no       |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                                                                     |
+| `team`       | `--team <string>`          | no       |                                                                                                                       |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_user` — Get user (read-only)
 
@@ -687,10 +687,10 @@ Reads a user by gid or email.
 
 Command line: `asana-gate user get <user>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `user`       | `<user>` (positional)      | yes      | User gid, email or "me"                                                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `user`       | `<user>` (positional)      | yes      | User gid, email or "me"                                                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_user_teams` — List a user's teams (read-only)
 
@@ -698,12 +698,12 @@ Lists the teams a user belongs to.
 
 Command line: `asana-gate user teams <user>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `user`       | `<user>` (positional)      | yes      | User gid, email or "me"                                                         |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `user`       | `<user>` (positional)      | yes      | User gid, email or "me"                                                                                               |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_teams` — List teams (read-only)
 
@@ -711,12 +711,12 @@ Lists the teams of the workspace (organizations only).
 
 Command line: `asana-gate team list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                               |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                                                                     |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_team` — Get team (read-only)
 
@@ -724,10 +724,10 @@ Reads one team.
 
 Command line: `asana-gate team get <team_gid>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `team_gid`   | `<team_gid>` (positional)  | yes      |                                                                                 |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `team_gid`   | `<team_gid>` (positional)  | yes      |                                                                                                                       |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_tags` — List tags (read-only)
 
@@ -735,12 +735,12 @@ Lists the tags of the workspace.
 
 Command line: `asana-gate tag list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                               |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                                                                     |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_tag` — Create tag
 
@@ -761,13 +761,13 @@ Lists the portfolios of the workspace owned by a user (the token owner by defaul
 
 Command line: `asana-gate portfolio list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                               |
-| `owner`      | `--owner <string>`         | no       | User gid or "me"                                                                |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                                                                     |
+| `owner`      | `--owner <string>`         | no       | User gid or "me"                                                                                                      |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_portfolio` — Get portfolio (read-only)
 
@@ -775,10 +775,10 @@ Reads one portfolio.
 
 Command line: `asana-gate portfolio get <portfolio_gid>`
 
-| Input           | Command-line form              | Required | Meaning                                                                         |
-| --------------- | ------------------------------ | -------- | ------------------------------------------------------------------------------- |
-| `portfolio_gid` | `<portfolio_gid>` (positional) | yes      |                                                                                 |
-| `opt_fields`    | `--opt-fields <value,...>`     | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input           | Command-line form              | Required | Meaning                                                                                                               |
+| --------------- | ------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `portfolio_gid` | `<portfolio_gid>` (positional) | yes      |                                                                                                                       |
+| `opt_fields`    | `--opt-fields <value,...>`     | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_portfolio_items` — List portfolio items (read-only)
 
@@ -786,12 +786,12 @@ Lists the projects and portfolios inside a portfolio.
 
 Command line: `asana-gate portfolio items <portfolio_gid>`
 
-| Input           | Command-line form              | Required | Meaning                                                                         |
-| --------------- | ------------------------------ | -------- | ------------------------------------------------------------------------------- |
-| `portfolio_gid` | `<portfolio_gid>` (positional) | yes      |                                                                                 |
-| `limit`         | `--limit <number>`             | no       | Page size (1-100)                                                               |
-| `offset`        | `--offset <string>`            | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields`    | `--opt-fields <value,...>`     | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input           | Command-line form              | Required | Meaning                                                                                                               |
+| --------------- | ------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `portfolio_gid` | `<portfolio_gid>` (positional) | yes      |                                                                                                                       |
+| `limit`         | `--limit <number>`             | no       | Page size (1-100)                                                                                                     |
+| `offset`        | `--offset <string>`            | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields`    | `--opt-fields <value,...>`     | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_custom_fields` — List custom fields (read-only)
 
@@ -799,12 +799,12 @@ Lists the custom field definitions of the workspace.
 
 Command line: `asana-gate custom-field list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                               |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `workspace`  | `--workspace <string>`     | no       | Workspace gid; defaults to the policy's workspace                                                                     |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_custom_field` — Create custom field
 
@@ -830,12 +830,12 @@ Lists the task templates of a project.
 
 Command line: `asana-gate task-template list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `project`    | `--project <string>`       | yes      |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `project`    | `--project <string>`       | yes      |                                                                                                                       |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_task_from_template` — Create task from template
 
@@ -870,11 +870,11 @@ Lists the Inbox notifications of the token's user; one shows only when the polic
 
 Command line: `asana-gate notification list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_mark_notifications_read` — Mark notifications read
 
@@ -902,11 +902,11 @@ Lists the AI Teammates (agents) of the workspace.
 
 Command line: `asana-gate agent list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_agent` — Get AI Teammate (read-only)
 
@@ -914,10 +914,10 @@ Reads one AI Teammate (agent).
 
 Command line: `asana-gate agent get <agent_gid>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `agent_gid`  | `<agent_gid>` (positional) | yes      |                                                                                 |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `agent_gid`  | `<agent_gid>` (positional) | yes      |                                                                                                                       |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_tables` — List tables (read-only)
 
@@ -925,11 +925,11 @@ Lists the tables of the workspace.
 
 Command line: `asana-gate table list`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_table` — Get table (read-only)
 
@@ -937,10 +937,10 @@ Reads one table.
 
 Command line: `asana-gate table get <table_gid>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `table_gid`  | `<table_gid>` (positional) | yes      |                                                                                 |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `table_gid`  | `<table_gid>` (positional) | yes      |                                                                                                                       |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_list_table_custom_fields` — List table custom fields (read-only)
 
@@ -948,12 +948,12 @@ Lists the custom field settings of a table: the fields its records carry.
 
 Command line: `asana-gate table custom-fields <table_gid>`
 
-| Input        | Command-line form          | Required | Meaning                                                                         |
-| ------------ | -------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `table_gid`  | `<table_gid>` (positional) | yes      |                                                                                 |
-| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form          | Required | Meaning                                                                                                               |
+| ------------ | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `table_gid`  | `<table_gid>` (positional) | yes      |                                                                                                                       |
+| `limit`      | `--limit <number>`         | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`        | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_table` — Create table
 
@@ -1007,14 +1007,14 @@ Lists the records of a table.
 
 Command line: `asana-gate record list`
 
-| Input            | Command-line form           | Required | Meaning                                                                         |
-| ---------------- | --------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `table_gid`      | `--table <string>`          | yes      |                                                                                 |
-| `modified_since` | `--modified-since <string>` | no       | ISO 8601 date-time                                                              |
-| `sort_by`        | `--sort-by <string>`        | no       | one of created_at                                                               |
-| `limit`          | `--limit <number>`          | no       | Page size (1-100)                                                               |
-| `offset`         | `--offset <string>`         | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields`     | `--opt-fields <value,...>`  | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input            | Command-line form           | Required | Meaning                                                                                                               |
+| ---------------- | --------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `table_gid`      | `--table <string>`          | yes      |                                                                                                                       |
+| `modified_since` | `--modified-since <string>` | no       | ISO 8601 date-time                                                                                                    |
+| `sort_by`        | `--sort-by <string>`        | no       | one of created_at                                                                                                     |
+| `limit`          | `--limit <number>`          | no       | Page size (1-100)                                                                                                     |
+| `offset`         | `--offset <string>`         | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields`     | `--opt-fields <value,...>`  | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_search_records` — Search records (read-only)
 
@@ -1022,24 +1022,24 @@ Searches the records of the workspace by name and filters, in every table unless
 
 Command line: `asana-gate record search`
 
-| Input               | Command-line form              | Required | Meaning                                                                         |
-| ------------------- | ------------------------------ | -------- | ------------------------------------------------------------------------------- |
-| `text`              | `--text <string>`              | no       | Text in the record's name                                                       |
-| `tables_any`        | `--tables-any <value,...>`     | no       |                                                                                 |
-| `tables_not`        | `--tables-not <value,...>`     | no       |                                                                                 |
-| `tables_all`        | `--tables-all <value,...>`     | no       |                                                                                 |
-| `teams_any`         | `--teams-any <value,...>`      | no       |                                                                                 |
-| `followers_any`     | `--followers-any <value,...>`  | no       | User gids, emails or "me"                                                       |
-| `followers_not`     | `--followers-not <value,...>`  | no       | User gids, emails or "me"                                                       |
-| `created_on`        | `--created-on <string>`        | no       |                                                                                 |
-| `created_on_before` | `--created-on-before <string>` | no       |                                                                                 |
-| `created_on_after`  | `--created-on-after <string>`  | no       |                                                                                 |
-| `created_at_before` | `--created-at-before <string>` | no       | ISO 8601 date-time                                                              |
-| `created_at_after`  | `--created-at-after <string>`  | no       | ISO 8601 date-time                                                              |
-| `sort_by`           | `--sort-by <string>`           | no       | one of created_at, modified_at                                                  |
-| `sort_ascending`    | `--sort-ascending`             | no       |                                                                                 |
-| `limit`             | `--limit <number>`             | no       | Page size (1-100)                                                               |
-| `opt_fields`        | `--opt-fields <value,...>`     | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input               | Command-line form              | Required | Meaning                                                                                                               |
+| ------------------- | ------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `text`              | `--text <string>`              | no       | Text in the record's name                                                                                             |
+| `tables_any`        | `--tables-any <value,...>`     | no       |                                                                                                                       |
+| `tables_not`        | `--tables-not <value,...>`     | no       |                                                                                                                       |
+| `tables_all`        | `--tables-all <value,...>`     | no       |                                                                                                                       |
+| `teams_any`         | `--teams-any <value,...>`      | no       |                                                                                                                       |
+| `followers_any`     | `--followers-any <value,...>`  | no       | User gids, emails or "me"                                                                                             |
+| `followers_not`     | `--followers-not <value,...>`  | no       | User gids, emails or "me"                                                                                             |
+| `created_on`        | `--created-on <string>`        | no       |                                                                                                                       |
+| `created_on_before` | `--created-on-before <string>` | no       |                                                                                                                       |
+| `created_on_after`  | `--created-on-after <string>`  | no       |                                                                                                                       |
+| `created_at_before` | `--created-at-before <string>` | no       | ISO 8601 date-time                                                                                                    |
+| `created_at_after`  | `--created-at-after <string>`  | no       | ISO 8601 date-time                                                                                                    |
+| `sort_by`           | `--sort-by <string>`           | no       | one of created_at, modified_at                                                                                        |
+| `sort_ascending`    | `--sort-ascending`             | no       |                                                                                                                       |
+| `limit`             | `--limit <number>`             | no       | Page size (1-100)                                                                                                     |
+| `opt_fields`        | `--opt-fields <value,...>`     | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_get_record` — Get record (read-only)
 
@@ -1047,10 +1047,10 @@ Reads one record.
 
 Command line: `asana-gate record get <record_gid>`
 
-| Input        | Command-line form           | Required | Meaning                                                                         |
-| ------------ | --------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `record_gid` | `<record_gid>` (positional) | yes      |                                                                                 |
-| `opt_fields` | `--opt-fields <value,...>`  | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form           | Required | Meaning                                                                                                               |
+| ------------ | --------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `record_gid` | `<record_gid>` (positional) | yes      |                                                                                                                       |
+| `opt_fields` | `--opt-fields <value,...>`  | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_record` — Create record
 
@@ -1113,12 +1113,12 @@ Lists the comments and activity (stories) of a record.
 
 Command line: `asana-gate record comments <record_gid>`
 
-| Input        | Command-line form           | Required | Meaning                                                                         |
-| ------------ | --------------------------- | -------- | ------------------------------------------------------------------------------- |
-| `record_gid` | `<record_gid>` (positional) | yes      |                                                                                 |
-| `limit`      | `--limit <number>`          | no       | Page size (1-100)                                                               |
-| `offset`     | `--offset <string>`         | no       | Pagination token: next_page.offset of the previous page                         |
-| `opt_fields` | `--opt-fields <value,...>`  | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed) |
+| Input        | Command-line form           | Required | Meaning                                                                                                               |
+| ------------ | --------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `record_gid` | `<record_gid>` (positional) | yes      |                                                                                                                       |
+| `limit`      | `--limit <number>`          | no       | Page size (1-100)                                                                                                     |
+| `offset`     | `--offset <string>`         | no       | Pagination token: next_page.offset of the previous page                                                               |
+| `opt_fields` | `--opt-fields <value,...>`  | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |
 
 ## `asana_create_record_comment` — Comment on record
 
@@ -1139,9 +1139,9 @@ Finds objects by name prefix (tasks, projects, users, tags, teams, portfolios, g
 
 Command line: `asana-gate find <query>`
 
-| Input           | Command-line form          | Required | Meaning                                                                                              |
-| --------------- | -------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `resource_type` | `--type <string>`          | yes      | one of task, project, user, tag, team, portfolio, goal, custom_field, project_template, agent, actor |
-| `query`         | `<query>` (positional)     | yes      |                                                                                                      |
-| `count`         | `--count <number>`         | no       | Results to return (1-100)                                                                            |
-| `opt_fields`    | `--opt-fields <value,...>` | no       | Extra fields to include in each object (Asana opt_fields, dotted paths allowed)                      |
+| Input           | Command-line form          | Required | Meaning                                                                                                               |
+| --------------- | -------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `resource_type` | `--type <string>`          | yes      | one of task, project, user, tag, team, portfolio, goal, custom_field, project_template, agent, actor                  |
+| `query`         | `<query>` (positional)     | yes      |                                                                                                                       |
+| `count`         | `--count <number>`         | no       | Results to return (1-100)                                                                                             |
+| `opt_fields`    | `--opt-fields <value,...>` | no       | The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed) |

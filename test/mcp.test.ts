@@ -172,6 +172,49 @@ describe("mcp server", () => {
 		expect(invisible.isError).toBe(true);
 	});
 
+	it("tells the constraints in force where an object is, as the policy writes them", async () => {
+		const { client, close } = await setup(`
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { project: "21" }
+    allow: ["task:*"]
+    require:
+      task:
+        name: { prefix: "[AI] ", not_matches: secret }
+        custom_fields: { Owner: { in: [AI] } }
+    apply: { task: { tags: { add: [ai-ok] } } }
+    forbid: { task: [html_notes] }
+    limit: { "task:create": { max: 2, per: 1h } }
+    confirm: [task:delete]
+  - where: { project: "22" }
+    redact: { task: [notes] }
+`);
+		const constraintsAt = async (gid: string): Promise<unknown> => {
+			const answer = await call(client, "asana_allowed_actions", { resource_type: "project", gid });
+			return answer.structuredContent?.constraints;
+		};
+		// What a task made or changed in the project meets: each value with the gid to send.
+		await expect(constraintsAt("21")).resolves.toStrictEqual({
+			require: {
+				task: {
+					name: [{ prefix: "[AI] ", not_matches: "/secret/u" }],
+					"custom_fields.61": [{ in: { "71": "AI" } }],
+				},
+			},
+			apply: { task: { tags: { add: ["41"] } } },
+			forbid: { task: ["html_notes"] },
+			limit: { "task:create": [{ max: 2, per: "1h" }] },
+			confirm: ["task:delete"],
+			labels: { "custom_fields.61": 'custom field "Owner"' },
+		});
+		await expect(constraintsAt("22")).resolves.toStrictEqual({ redact: { task: ["notes"] } });
+		// Where no constraint is in force, the answer names none.
+		await expect(constraintsAt("23")).resolves.toBeUndefined();
+		await close();
+	});
+
 	it("tells the agent whom it acts as, showing the user's name and email as the policy would", async () => {
 		const scoped = `version: 1\nworkspace: "1"\nrules:\n  - allow: [workspace:read]\n  - where: { project: "21" }\n    allow: [read]\n`;
 		const workspace = 'in the workspace "Acme" (gid 1)';

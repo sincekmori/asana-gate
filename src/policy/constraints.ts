@@ -14,7 +14,7 @@ import { parseInstant, resolveDateBound } from "./durations.ts";
 /** A scalar a policy may name as a value. */
 type Scalar = string | number | boolean;
 
-/** One requirement on a request member. Every operator present must hold. */
+/** One requirement on a request member, by the operators a policy writes. Every operator present must hold. */
 interface FieldRequirement {
 	/** On create the member must be set and non-empty; on update it may not be cleared. */
 	readonly present?: boolean;
@@ -22,16 +22,16 @@ interface FieldRequirement {
 	readonly suffix?: string;
 	readonly contains?: string;
 	readonly matches?: RegExp;
-	readonly notMatches?: RegExp;
+	readonly not_matches?: RegExp;
 	/**
 	 * The values a request may (or may not) carry, as Asana takes them (the
 	 * gid of an option, tag, project or team named in the policy), each with
 	 * how the policy wrote it.
 	 */
 	readonly in?: ReadonlyMap<string, string>;
-	readonly notIn?: ReadonlyMap<string, string>;
-	readonly minLength?: number;
-	readonly maxLength?: number;
+	readonly not_in?: ReadonlyMap<string, string>;
+	readonly min_length?: number;
+	readonly max_length?: number;
 	/** A number, or a date (`YYYY-MM-DD`, ISO 8601, `today`, `now`, `+7d`, `-1d`). */
 	readonly min?: Scalar;
 	readonly max?: Scalar;
@@ -114,16 +114,16 @@ function textViolations(text: string, requirement: FieldRequirement): Violation[
 			`must match ${String(requirement.matches)}`,
 		],
 		[
-			requirement.notMatches === undefined || !requirement.notMatches.test(text),
-			`must not match ${String(requirement.notMatches)}`,
+			requirement.not_matches === undefined || !requirement.not_matches.test(text),
+			`must not match ${String(requirement.not_matches)}`,
 		],
 		[
-			requirement.minLength === undefined || text.length >= requirement.minLength,
-			`must be at least ${requirement.minLength ?? 0} characters`,
+			requirement.min_length === undefined || text.length >= requirement.min_length,
+			`must be at least ${requirement.min_length ?? 0} characters`,
 		],
 		[
-			requirement.maxLength === undefined || text.length <= requirement.maxLength,
-			`must be at most ${requirement.maxLength ?? 0} characters`,
+			requirement.max_length === undefined || text.length <= requirement.max_length,
+			`must be at most ${requirement.max_length ?? 0} characters`,
 		],
 	];
 	return checks.filter(([ok]) => !ok).map(([, message]) => message);
@@ -142,7 +142,7 @@ function setViolations(texts: readonly string[], requirement: FieldRequirement):
 	if (allowed !== undefined && texts.some((text) => !allowed.has(text))) {
 		violations.push(`must be one of ${listed(allowed)}`);
 	}
-	const denied = requirement.notIn;
+	const denied = requirement.not_in;
 	if (denied !== undefined && texts.some((text) => denied.has(text))) {
 		violations.push(`must not be one of ${listed(denied)}`);
 	}

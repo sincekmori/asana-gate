@@ -102,21 +102,16 @@ async function compileRequirement(
 	if (raw === true) {
 		return { present: true };
 	}
+	// The patterns and the value sets are compiled; every other operator holds as written.
+	const { matches, not_matches: unmatched, in: allowed, not_in: denied, ...written } = raw;
 	return {
-		...(raw.present !== undefined && { present: raw.present }),
-		...(raw.prefix !== undefined && { prefix: raw.prefix }),
-		...(raw.suffix !== undefined && { suffix: raw.suffix }),
-		...(raw.contains !== undefined && { contains: raw.contains }),
-		...(raw.matches !== undefined && { matches: compileRegExp(raw.matches, `${label}.matches`) }),
-		...(raw.not_matches !== undefined && {
-			notMatches: compileRegExp(raw.not_matches, `${label}.not_matches`),
+		...written,
+		...(matches !== undefined && { matches: compileRegExp(matches, `${label}.matches`) }),
+		...(unmatched !== undefined && {
+			not_matches: compileRegExp(unmatched, `${label}.not_matches`),
 		}),
-		...(raw.in !== undefined && { in: await referenceValues(raw.in, resolve) }),
-		...(raw.not_in !== undefined && { notIn: await referenceValues(raw.not_in, resolve) }),
-		...(raw.min_length !== undefined && { minLength: raw.min_length }),
-		...(raw.max_length !== undefined && { maxLength: raw.max_length }),
-		...(raw.min !== undefined && { min: raw.min }),
-		...(raw.max !== undefined && { max: raw.max }),
+		...(allowed !== undefined && { in: await referenceValues(allowed, resolve) }),
+		...(denied !== undefined && { not_in: await referenceValues(denied, resolve) }),
 	};
 }
 

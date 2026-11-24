@@ -3,6 +3,7 @@
 ## MCP server
 
 `asana-gate mcp` serves the curated tools the policy could ever allow (a read-only policy lists no writing tool), plus three generic ones; the policy is applied when a tool runs.
+An action counts as one the policy could allow when every policy file allows it somewhere (a `read` through a filter, which never makes an object visible, aside) without denying it over the very same scope: `allow: ["task:*"]` with `deny: [task:delete]` beside it lists no `asana_delete_task`.
 Claude Code loads tool definitions on demand once they grow large, so a long list costs little there.
 The server's instructions tell the agent whom every request runs as: the gid of the token's user and the name and gid of the workspace, so it can tell which `assignee`, `created_by` or `followers` in a response is itself; the user's name and email are added only as far as the policy would show them through `GET /users/me` (`workspace:read` and `user:read` at workspace level, then `redact`).
 
@@ -10,7 +11,7 @@ The server's instructions tell the agent whom every request runs as: the gid of 
 - `asana_create_tasks` and `asana_update_tasks` take up to 50 tasks at once, `asana_create_records` and `asana_update_records` as many records: the gate checks each one, Asana runs them ten at a time, and the result holds one status per task or record.
 - `asana_get_task` answers the task's latest comments and its direct subtasks in the same call when asked (`include_comments`, `include_subtasks`), and `asana_get_project` its sections and task counts (`include_sections`, `include_task_counts`): each part is a request of its own to the gate, and one the policy or Asana refuses is `null`.
 - `asana_request` calls any REST operation (`method`, `path`, `query`, `body`) through the same policy; a `POST /batch` through it takes up to 50 actions.
-- `asana_operations` lists the operations with the action each one needs; `asana_allowed_actions` tells what the policy allows on one object.
+- `asana_operations` lists the operations with the action each one needs; `asana_allowed_actions` tells what the policy allows on one object and, as `constraints`, what it asks of the requests made there: the members a create or update must carry or may not set, what is filled in or left out of answers, and the actions that are capped or wait for a confirmation, each value with the gid to send.
 
 Refusals come back as tool errors whose text is the JSON error body, so agents see the same wording a direct API client would.
 A tool refuses an argument its input does not declare, naming it, rather than run without it; `asana_request` takes every member of an operation.

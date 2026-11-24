@@ -58,7 +58,7 @@ The server is listed in the [MCP Registry](https://registry.modelcontextprotocol
    asana-gate mcp
    ```
 
-   For Claude Code, `asana-gate init --agent claude-code` writes the project's `.mcp.json`, a copy of the skill and a permission rule that keeps the token from the agent (see [Agents](#agents)).
+   For Claude Code, `asana-gate init --agent claude-code` writes the project's `.mcp.json`, a copy of the skill and the rules that keep the token from the agent (see [Agents](#agents)).
    For any other MCP host, register the command; started inside the project directory, `asana-gate mcp` finds the policy and the token by itself, and `-C` points it at the project when the host starts it elsewhere:
 
    ```json
@@ -288,6 +288,7 @@ Limits count per rule and action inside one gate process, over a sliding window,
    A `limit` or `confirm` on a read action applies to lists of that resource as well, once per request.
 9. Every object in a response carries `allowed_actions`, the actions the policy currently allows on it, so an agent can plan before acting; members under `redact` are removed.
    Nested references to hidden objects (a subtask's `parent`, `dependencies`, a job's `new_task`, …) are removed, and visible ones are redacted as their own place in the policy says.
+   An object is answered with the fields the request asked for, without those the gate read beside them to judge it; the objects of a list asked for without `opt_fields` carry their `gid` and name, or what tells apart an object that has no name.
 
 Rule order in the file does not matter.
 `asana-gate explain <gid>` shows how the policy treats one object, which rules decided each action, and the constraints in force on it.
@@ -306,6 +307,7 @@ When the project has no policy, yours is the policy, bounded by the administrato
 ## MCP server
 
 `asana-gate mcp` serves the curated tools the policy could ever allow (a read-only policy lists no writing tool), plus three generic ones; the policy is applied when a tool runs.
+An action counts as one the policy could allow when every policy file allows it somewhere (a `read` through a filter, which never makes an object visible, aside) without denying it over the very same scope: `allow: ["task:*"]` with `deny: [task:delete]` beside it lists no `asana_delete_task`.
 Claude Code loads tool definitions on demand once they grow large, so a long list costs little there.
 The server's instructions tell the agent whom every request runs as: the gid of the token's user and the name and gid of the workspace, so it can tell which `assignee`, `created_by` or `followers` in a response is itself; the user's name and email are added only as far as the policy would show them through `GET /users/me` (`workspace:read` and `user:read` at workspace level, then `redact`).
 
@@ -313,7 +315,7 @@ The server's instructions tell the agent whom every request runs as: the gid of 
 - `asana_create_tasks` and `asana_update_tasks` take up to 50 tasks at once, `asana_create_records` and `asana_update_records` as many records: the gate checks each one, Asana runs them ten at a time, and the result holds one status per task or record.
 - `asana_get_task` answers the task's latest comments and its direct subtasks in the same call when asked (`include_comments`, `include_subtasks`), and `asana_get_project` its sections and task counts (`include_sections`, `include_task_counts`): each part is a request of its own to the gate, and one the policy or Asana refuses is `null`.
 - `asana_request` calls any REST operation (`method`, `path`, `query`, `body`) through the same policy; a `POST /batch` through it takes up to 50 actions.
-- `asana_operations` lists the operations with the action each one needs; `asana_allowed_actions` tells what the policy allows on one object.
+- `asana_operations` lists the operations with the action each one needs; `asana_allowed_actions` tells what the policy allows on one object and, as `constraints`, what it asks of the requests made there: the members a create or update must carry or may not set, what is filled in or left out of answers, and the actions that are capped or wait for a confirmation, each value with the gid to send.
 
 Refusals come back as tool errors whose text is the JSON error body, so agents see the same wording a direct API client would.
 A tool refuses an argument its input does not declare, naming it, rather than run without it; `asana_request` takes every member of an operation.
@@ -487,7 +489,9 @@ The `asana.enable` and `asana.disable` settings send those headers on every requ
 
 A token an agent's shell can see is a token the agent can use without the gate.
 Asana's own command line, `asana-cli` ([`@asana-api/cli`](https://developers.asana.com/docs/asana-cli)), is made for agents with a terminal: it reads `ASANA_ACCESS_TOKEN` by default and sends changes and deletions with no policy and no confirmation.
-So do not export the token where an agent runs commands: save it with `asana-gate token set`, and tell the agent that Asana is reached only through asana-gate, as the instructions `init --agent` prints do.
+Which tool an agent reaches for is the agent's choice, steered by its instructions: tell it that Asana is reached only through asana-gate, as the paragraph `init --agent` prints does.
+For an agent that keeps to them, that is enough, wherever the token is.
+For the policy to hold against one that does not (a task or a comment may tell it otherwise), the token must be out of reach of the commands the agent runs, which Claude Code's sandbox can see to (below) and the other editors cannot.
 
 ### The skill
 
@@ -501,7 +505,8 @@ It is generated from this README and the tool definitions (`pnpm generate-skill`
 
 - `.mcp.json` gains the project-scoped `asana-gate` server (`npx -y asana-gate@<this version> mcp`), which Claude Code asks each person to approve once;
 - `.claude/skills/asana-gate` receives a copy of the skill, which Claude Code loads by itself; `check` warns when the copy is from another version;
-- `.claude/settings.json` gains `Read(./.asana-gate/token)` in `permissions.deny`, so the agent cannot read the token file (Claude Code applies the rule to `cat` and the other file-reading commands as well).
+- `.claude/settings.json` gains `Read(./.asana-gate/token)` and `Read(~/.asana-gate/token)` in `permissions.deny`, so the agent cannot read a token file (Claude Code applies the rules to `cat` and the other file-reading commands it recognizes), and the token's variable as a `deny` entry of `sandbox.credentials.envVars`: with Claude Code's sandbox on (`/sandbox`), the rules bind every command the agent runs, and the variable is taken out of their environment, while the MCP server, which runs outside the sandbox, still reads the token.
+  An `asana-gate` command the agent runs in its shell then finds neither the token files nor the variable, so in such a project the agent works through the MCP tools.
 
 Commit those with the policy, then say in `CLAUDE.md` what the command prints:
 
@@ -514,7 +519,7 @@ Read .claude/skills/asana-gate/SKILL.md before touching Asana.
 Never call the Asana API any other way (Asana's own `asana-cli` included), and never read .asana-gate/token.
 ```
 
-Each person saves their own token with `asana-gate token set` rather than exporting it, which would hand it to the agent's shell, and the policy, reviewed like code, is the whole of what the agent may do.
+Each person brings their own token, exported or saved with `asana-gate token set`, and the policy, reviewed like code, says what the agent may do with it.
 The copy of the skill keeps itself current: whenever `asana-gate mcp` starts in the project with another version than the copy carries, it rewrites the copy, so an upgrade of the pin in `.mcp.json` shows up as a change to commit.
 The Claude Code extension for VS Code reads the same `.mcp.json`.
 
@@ -524,7 +529,7 @@ The Claude Code extension for VS Code reads the same `.mcp.json`.
 VS Code starts the server without asking once the workspace is trusted; `.vscode/mcp.json`, the file of its deprecated Local agent harness, is not written.
 An existing file is changed only where the server goes, so its comments stay.
 The command prints the paragraph for `.github/copilot-instructions.md` or `AGENTS.md`.
-Neither editor can be told to keep its agent from reading a file, so with them keep the token out of the project with `asana-gate token set --user`, not in a variable their terminal inherits, and rely on the instructions the command prints.
+Neither editor can be told to keep its agent from reading a file or a variable, so with them the instructions the command prints are what keeps the agent to the gate, and the token is best kept out of the project, with `asana-gate token set --user` or in `ASANA_ACCESS_TOKEN`.
 For Codex, the skill copy is enough on the file side; register the server with `codex mcp add asana-gate -- npx -y asana-gate@<version> mcp`.
 
 ### Hosts without MCP
@@ -553,7 +558,9 @@ Some behaviors worth knowing:
 - `POST /projects/{gid}/removeMembers` refuses `me`, which `addMembers` takes, so `asana_remove_project_members` wants gids.
 - Removing a project's owner from its members leaves the project without an owner, and added back the user is an editor, who can neither take the ownership back nor delete the project.
 - Unknown `opt_fields` are ignored by Asana, so the fields the gate adds to requests never break them.
-- With `opt_fields`, Asana answers the `gid` and the selected members only: a reference selected alone comes back as `{ gid, resource_type }`, and one with a selection inside it (`parent.name`) as `{ gid, name }`, without its `resource_type`. The gate therefore also selects `resource_type` inside every member its fields reach into, to recognize and check nested references, and cuts a `GET` by gid back to the caller's fields before answering.
+- With `opt_fields`, Asana answers the `gid` and the selected members only: a reference selected alone comes back as `{ gid, resource_type }`, and one with a selection inside it (`parent.name`) as `{ gid, name }`, without its `resource_type`.
+  The gate therefore also selects `resource_type` inside every member its fields reach into, to recognize and check nested references, and cuts every object back to the caller's fields before answering.
+  In a list or in the answer to a write, a member the caller selects alone and the gate reads inside (`parent` in a list of tasks) keeps what the gate selected inside it, because selecting inside a member changes what Asana answers for it; a `GET` by gid reads what the gate needs beside the request instead.
 - Nested selections reach into referenced objects, including on typeahead results: `memberships.project.team` gives a task's team with the task.
 - Custom fields, custom types, time periods, time tracking categories and out-of-office entries carry no `workspace` member, so the gate places them in the governed workspace; with a token that belongs to several workspaces, rules at workspace level also govern such objects of the other workspaces when an agent names their gids. `PUT /enum_options/{gid}` is checked at workspace level only (Asana offers no way to read an enum option).
 

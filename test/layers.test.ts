@@ -82,6 +82,17 @@ async function warningsOf(text: string): Promise<string[]> {
 	return policyWarnings(policy).map((finding) => finding.text);
 }
 
+/** A rule allowing every section action everywhere, and the start of a rule scoped to project 21 (Backend). */
+const EVERYWHERE = '  - allow: ["section:*"]\n';
+const IN_BACKEND = '  - where: { project: "21" }\n';
+
+/** Whether a policy made of the one project file with `rules` could ever allow deleting a section. */
+async function grantsDelete(rules: string): Promise<boolean> {
+	const text = `version: 1\nworkspace: Acme\nrules:\n${rules}`;
+	const policy = await compilePolicies([source(text, "project")], fakeResolver);
+	return grantedActions(policy).has("section:delete");
+}
+
 const describeLayers = (policy: Policy): string[] =>
 	policy.layers.map((layer) => `${layer.role}:${layer.otherWorkspace ?? ""}`);
 
@@ -116,6 +127,38 @@ describe("policy files bound each other", () => {
 		expect(policyWarnings(policy).map((finding) => finding.text)).toContain(
 			"the policy files allow no action in common; every request will be refused",
 		);
+	});
+
+	it("does not count as granted what a deny over the same scope takes back", async () => {
+		// In one rule, or in two over the same scope however each names it, the deny wins wherever the allow applies.
+		await expect(grantsDelete(`${EVERYWHERE}    deny: [section:delete]\n`)).resolves.toBe(false);
+		await expect(grantsDelete(`${EVERYWHERE}  - deny: [section:delete]\n`)).resolves.toBe(false);
+		await expect(
+			grantsDelete(
+				`${IN_BACKEND}    allow: ["section:*"]\n  - where: { project: Backend }\n    deny: [section:delete]\n`,
+			),
+		).resolves.toBe(false);
+		// The user's file denies deleting tasks everywhere, so the files together never allow it.
+		expect(grantedActions(await bounded).has("task:delete")).toBe(false);
+	});
+
+	it("counts as granted what a deny over another scope leaves standing", async () => {
+		// A narrower allow grants the action again, and a narrower deny leaves the wider allow elsewhere.
+		await expect(
+			grantsDelete(
+				`${EVERYWHERE}  - deny: [section:delete]\n${IN_BACKEND}    allow: [section:delete]\n`,
+			),
+		).resolves.toBe(true);
+		await expect(
+			grantsDelete(`${EVERYWHERE}${IN_BACKEND}    deny: [section:delete]\n`),
+		).resolves.toBe(true);
+	});
+
+	it("does not count as granted a read that only a filter allows, which never decides one", async () => {
+		const text =
+			"version: 1\nworkspace: Acme\nrules:\n  - where: { tag: ai-ok }\n    allow: [task:read, task:update]\n";
+		const policy = await compilePolicies([source(text, "project")], fakeResolver);
+		expect([...grantedActions(policy)]).toStrictEqual(["task:update"]);
 	});
 
 	it("lets each file decide by its own most specific rule before the answers are combined", async () => {

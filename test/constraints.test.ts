@@ -47,7 +47,7 @@ describe("checkRequirement", () => {
 	});
 
 	it("checks text operators", () => {
-		const requirement = { prefix: "[AI] ", maxLength: 12, notMatches: /secret/iu };
+		const requirement = { prefix: "[AI] ", max_length: 12, not_matches: /secret/iu };
 		expect(checkRequirement("[AI] hello", requirement, { verb: "create" })).toStrictEqual([]);
 		expect(checkRequirement("hello", requirement, { verb: "create" })).toStrictEqual([
 			'must start with "[AI] "',

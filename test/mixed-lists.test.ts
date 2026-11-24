@@ -94,12 +94,8 @@ describe("lists of mixed types", () => {
 		fake.api("POST", "/portfolios/81/addItem", { item: innerGid });
 		const response = await gate.execute({ method: "GET", path: "/portfolios/81/items" });
 		expect(items(response.body).map((item) => item.gid)).toStrictEqual(["21", "22", innerGid]);
-		// The projects' nested team is checked once for all of them.
-		expect(requests(fake)).toStrictEqual([
-			"GET /portfolios/81",
-			"GET /portfolios/81/items",
-			"GET /teams/11",
-		]);
+		// The projects' team, read to judge them, is not answered, so nothing is loaded to check it.
+		expect(requests(fake)).toStrictEqual(["GET /portfolios/81", "GET /portfolios/81/items"]);
 	});
 
 	it("judge favorites of the type asked for by their own fields", async () => {
@@ -110,10 +106,6 @@ describe("lists of mixed types", () => {
 			query: { resource_type: "project", workspace: "1" },
 		});
 		expect(items(response.body).map((project) => project.gid)).toStrictEqual(["21"]);
-		expect(requests(fake)).toStrictEqual([
-			"GET /users/me",
-			"GET /users/me/favorites",
-			"GET /teams/11",
-		]);
+		expect(requests(fake)).toStrictEqual(["GET /users/me", "GET /users/me/favorites"]);
 	});
 });

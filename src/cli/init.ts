@@ -150,7 +150,10 @@ async function runInit(argv: readonly string[], version: string): Promise<number
 		console.log(`${status} ${file}`);
 	}
 	if (agents.length > 0) {
-		const wiring = await wireAgents(root, agents, version);
+		const wiring = await wireAgents(root, agents, {
+			version,
+			tokenEnv: loaded.settings.token.env,
+		});
 		for (const file of wiring.written) {
 			console.log(`wrote ${file}`);
 		}

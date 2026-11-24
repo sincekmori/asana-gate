@@ -13,6 +13,14 @@ function isObject(value: unknown): value is JsonObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** The object member `key` of `parent`, put there when the member is not an object. */
+function objectIn(parent: JsonObject, key: string): JsonObject {
+	const current = parent[key];
+	const object = isObject(current) ? current : {};
+	parent[key] = object;
+	return object;
+}
+
 /** The string value of a member, if it is a string. */
 function stringOf(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
@@ -40,5 +48,5 @@ function parseJsonc(text: string, source: string, fail: (message: string) => Err
 	return value;
 }
 
-export { isObject, parseJson, parseJsonc, stringOf };
+export { isObject, objectIn, parseJson, parseJsonc, stringOf };
 export type { JsonObject };

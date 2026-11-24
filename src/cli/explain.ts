@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 import { isResource, type Resource } from "../catalog/resources.ts";
 import { FactsLoader, type Loaded } from "../gate/facts.ts";
 import { stringOf } from "../gate/objects.ts";
-import { constraintsFor, labelOf } from "../policy/effective.ts";
+import { constraintJson, constraintsFor, labelOf } from "../policy/effective.ts";
 import {
 	type Branch,
 	decide,
@@ -65,15 +65,6 @@ function describeBranch(branch: Branch): string {
 	const text = parts.filter((part) => part !== undefined).join(", ");
 	return text === "" ? "workspace level" : text;
 }
-
-/** JSON for a compiled constraint: a value set as `{ "<gid sent>": "<as written>" }`, a pattern as written. */
-const constraintJson = (constraint: unknown): string =>
-	JSON.stringify(constraint, (_key, value: unknown): unknown => {
-		if (value instanceof Map) {
-			return Object.fromEntries(value as ReadonlyMap<string, string>);
-		}
-		return value instanceof RegExp ? String(value) : value;
-	});
 
 /** Prints the constraints in force for the object's resource. */
 function printConstraints(policy: Policy, loaded: Loaded): void {
@@ -210,4 +201,4 @@ async function runExplain(argv: readonly string[]): Promise<number> {
 	return 0;
 }
 
-export { constraintJson, runExplain };
+export { runExplain };

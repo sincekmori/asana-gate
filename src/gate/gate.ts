@@ -8,7 +8,12 @@ import { ruleFor } from "../catalog/classification.ts";
 import type { HttpMethod } from "../catalog/operation-spec.ts";
 import type { Resource } from "../catalog/resources.ts";
 import { type Logger, silentLogger } from "../log.ts";
-import { constraintsFor, type EffectiveLimit, hasConstraints } from "../policy/effective.ts";
+import {
+	constraintsFor,
+	type EffectiveConstraints,
+	type EffectiveLimit,
+	hasConstraints,
+} from "../policy/effective.ts";
 import {
 	allowedActions,
 	type Explanation,
@@ -43,7 +48,7 @@ import {
 	type ResponsePlan,
 } from "./plan.ts";
 import { fillPath, matchRoute, type RouteMatch } from "./router.ts";
-import { augmentOptFields, pick, requestedFields } from "./selection.ts";
+import { askFor, keep, pick, requestedFields, type Selection } from "./selection.ts";
 import { redactObject } from "./shape.ts";
 
 /** Options for {@link Gate}. */
@@ -121,12 +126,14 @@ const HIDDEN = Symbol("hidden");
 /** Ancestors known with their placement, by gid: none. */
 const NO_ANCESTORS: ReadonlyMap<string, AsanaObject> = new Map();
 
-/** What an object a response shows is judged by. */
+/** What an object a response shows is judged by, and what the answer keeps of it. */
 interface Judging {
 	/** The object's own facts; `undefined` when none could be derived. */
 	readonly facts: Facts | undefined;
 	/** The ancestors known with their placement, by gid ({@link FactsLoader.placedAncestors}). */
 	readonly ancestors?: ReadonlyMap<string, AsanaObject>;
+	/** The fields kept (the gate asked for more); everything without one. */
+	readonly selection?: Selection;
 }
 
 const WRITE_METHODS: ReadonlySet<HttpMethod> = new Set(["POST", "PUT", "PATCH"]);
@@ -171,12 +178,6 @@ function shapedForm(form: FormData, data: unknown): FormData {
 		}
 	}
 	return shaped;
-}
-
-/** The fields a request names, `undefined` for none (Asana's default representation). */
-function fieldsNamed(optFields: string | undefined): string[] | undefined {
-	const fields = requestedFields(optFields);
-	return fields.length > 0 ? fields : undefined;
 }
 
 /** The type of an item of a mixed list: the one it names, or the only one the list expects. */
@@ -298,17 +299,23 @@ class Gate {
 
 	/**
 	 * How the policy treats one object, as an agent may ask: 404 when the
-	 * object is invisible, otherwise the allowed actions with their reasons.
+	 * object is invisible, otherwise the allowed actions with their reasons
+	 * and the constraints in force where it is.
 	 */
 	public async explain(
 		type: Resource,
 		gid: string,
-	): Promise<{ facts: Facts; explanation: Explanation }> {
+	): Promise<{ facts: Facts; explanation: Explanation; constraints: EffectiveConstraints }> {
 		const loaded = await this.loader.load(type, gid);
 		if (loaded === undefined || !isVisible(this.policy, loaded.facts, type)) {
 			throw notFound(type, gid);
 		}
-		return { facts: loaded.facts, explanation: explainResource(this.policy, loaded.facts, type) };
+		const { facts } = loaded;
+		return {
+			facts,
+			explanation: explainResource(this.policy, facts, type),
+			constraints: constraintsFor(this.policy, facts),
+		};
 	}
 
 	/** Evaluates the `limit` and `confirm` clauses in force for the checked targets. */
@@ -423,16 +430,16 @@ class Gate {
 
 	private async run(request: GateRequest, options: ExecuteOptions): Promise<GateResponse> {
 		const { match, context, plan } = await this.authorize(request, options);
-		if (plan.answer !== undefined) {
-			// Planning read what the request asks for, afresh; sending it would read it again.
-			return { status: 200, body: await this.postProcess(plan.response, plan.answer) };
-		}
-		const query: Record<string, QueryValue> = { ...context.query };
-		const optFields = augmentOptFields(
+		const { optFields, response: asked } = askFor(
 			plan.response,
-			fieldsNamed(context.query.opt_fields),
+			requestedFields(context.query.opt_fields),
 			(type) => this.loader.requiredFields(type),
 		);
+		if (plan.answer !== undefined) {
+			// Planning read what the request asks for, afresh; sending it would read it again.
+			return { status: 200, body: await this.postProcess(asked, plan.answer) };
+		}
+		const query: Record<string, QueryValue> = { ...context.query };
 		if (optFields !== undefined) {
 			query.opt_fields = optFields;
 		}
@@ -455,7 +462,7 @@ class Gate {
 				this.loader.invalidate(stale.type, stale.gid);
 			}
 		});
-		const body = await this.postProcess(plan.response, response.body, {
+		const body = await this.postProcess(asked, response.body, {
 			...(request.method === "GET" && { refill: send }),
 			...(Number(context.query.limit) > 0 && { limit: Number(context.query.limit) }),
 		});
@@ -502,16 +509,11 @@ class Gate {
 		}
 		const ancestors =
 			response.loaded === undefined ? NO_ANCESTORS : this.loader.placedAncestors(response.loaded);
-		const decorated = await this.decorate(response.type, body.data, { facts, ancestors });
-		if (response.selection === undefined) {
-			return { ...body, data: decorated };
-		}
-		// What the gate asked for besides the caller's fields goes, once it has been checked.
-		const data = {
-			...pick(decorated, response.selection),
-			allowed_actions: decorated.allowed_actions,
+		const { selection } = response;
+		return {
+			...body,
+			data: await this.decorate(response.type, body.data, { facts, ancestors, selection }),
 		};
-		return { ...body, data };
 	}
 
 	private async processList(
@@ -571,7 +573,7 @@ class Gate {
 		if (facts === undefined || !isVisible(this.policy, facts, type)) {
 			return undefined;
 		}
-		return this.decorate(type, item, { facts });
+		return this.decorate(type, item, { facts, selection: response.selection });
 	}
 
 	private async factsOfItem(
@@ -596,17 +598,27 @@ class Gate {
 		return loaded?.facts;
 	}
 
-	/** Redacts an object, scrubs its nested references and attaches its `allowed_actions`. */
+	/**
+	 * An object as its answer shows it: redacted, its nested references
+	 * scrubbed, cut back to the fields kept, with its `allowed_actions`. The
+	 * members the answer leaves out altogether go first, so nothing is loaded
+	 * to check them; inside a member kept, the cut follows the check, which
+	 * tells a reference by the `resource_type` the gate asked for.
+	 */
 	private async decorate(
 		type: Resource,
 		object: AsanaObject,
-		{ facts, ancestors = NO_ANCESTORS }: Judging,
+		{ facts, ancestors = NO_ANCESTORS, selection }: Judging,
 	): Promise<AsanaObject> {
 		if (facts === undefined) {
-			return { ...object, allowed_actions: [] };
+			return { ...pick(object, selection), allowed_actions: [] };
 		}
-		const shown = await this.scrubNested(this.redacted(type, object, facts), 0, ancestors);
-		return { ...shown, allowed_actions: allowedActions(this.policy, facts, type) };
+		const kept = this.redacted(type, keep(object, selection), facts);
+		const checked = await this.scrubNested(kept, 0, ancestors);
+		return {
+			...pick(checked, selection),
+			allowed_actions: allowedActions(this.policy, facts, type),
+		};
 	}
 
 	private redacted(type: Resource, object: AsanaObject, facts: Facts): AsanaObject {

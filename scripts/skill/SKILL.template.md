@@ -29,6 +29,7 @@ Check it before writing, because an action missing from it will be refused: plan
 | `429` `asana-gate: <action> is limited to N per <period>`                                  | A rate cap the policy sets on this action in this scope                                                                                         | Wait for the period to pass; do not loop on it                                                                                                          |
 
 Lists (projects, tasks, search, typeahead, events) are filtered silently: hidden objects are simply absent, nothing says how many were removed, and a page carries `next_page.offset` to continue with `offset`.
+An object carries its `gid` and the fields you ask for, nothing else: a list without `opt_fields` names its objects only, so ask a list for the members you need (`opt_fields: ["name", "completed", "assignee.name"]`) instead of reading each object again.
 Asana's own errors pass through unchanged, without the `asana-gate:` prefix: a 402 means the workspace's plan lacks the feature (search, custom fields, portfolios, goals, task dependencies, milestones, and tables and records need a paid plan), a plain 400 is Asana rejecting the body, a plain 403 is the token's own permission (audit log events, workspace events and organization exports take a service account on an Enterprise tier; the early-access Agents endpoints take the `ai_teammate_actors` flag in the settings' `asana.enable`).
 Look for the prefix: with it the policy decided, without it Asana did.
 
@@ -39,7 +40,8 @@ The server exposes the curated tools the policy could ever allow, plus three gen
 - `asana_create_tasks` and `asana_update_tasks` take up to {{BATCH_LIMIT}} tasks at once, `asana_create_records` and `asana_update_records` as many records, and answer with one `status_code` and `body` per task or record, in order; some may fail while the others succeed.
 - `asana_get_task` with `include_comments` and `include_subtasks`, and `asana_get_project` with `include_sections` and `include_task_counts`, answer those parts in the same call: prefer that to separate calls when starting on a task or a project; a part that could not be read is `null`, not empty.
 - `asana_request` calls any Asana REST operation (`method`, `path` below `/api/1.0`, `query`, `body` as the `data` object) through the same policy; a `POST /batch` through it takes up to {{BATCH_LIMIT}} actions.
-- `asana_operations` lists the operations with the policy action each needs; `asana_allowed_actions` tells what you may do with one object.
+- `asana_operations` lists the operations with the policy action each needs; `asana_allowed_actions` tells what you may do with one object and, as `constraints`, what the policy asks of the requests made there: the members a create or update must carry (`require`) or may not set (`forbid`), what is filled in (`apply`) or left out of answers (`redact`), and the actions that are capped (`limit`) or wait for a confirmation (`confirm`).
+  Call it for the project or task you are about to write in, and write the request to fit, rather than learning a constraint from a 400.
 - A tool refuses an argument its input does not declare (`Unrecognized key`) rather than run without it: `asana_operations` shows every member an operation takes, and `asana_request` sends them.
 
 {{TOOLS_TABLE}}

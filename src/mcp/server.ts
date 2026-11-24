@@ -130,14 +130,14 @@ function createAsanaGateServer(gate: Gate, options: ServerOptions): McpServer {
 		{
 			title: "Allowed actions on an object",
 			description:
-				"Tells which actions the policy allows on one object; 404 when the object is not visible to you.",
+				"Tells which actions the policy allows on one object and, as constraints, what it asks of the requests made there: what a create or update must carry (require) or may not set (forbid), what is filled in (apply) or left out of answers (redact), per resource and member, and which actions are capped (limit) or wait for the person's confirmation (confirm). 404 when the object is not visible to you.",
 			inputSchema: z.strictObject({ resource_type: z.enum(RESOURCES), gid: z.string() }),
 			annotations: { readOnlyHint: true, idempotentHint: true },
 		},
 		async (args) => {
 			try {
-				const { explanation } = await gate.explain(args.resource_type, args.gid);
-				return jsonResult(explanationBody(args.resource_type, args.gid, explanation));
+				const { explanation, constraints } = await gate.explain(args.resource_type, args.gid);
+				return jsonResult(explanationBody(args.gid, explanation, constraints));
 			} catch (error) {
 				return errorResult(error);
 			}

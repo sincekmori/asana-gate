@@ -89,7 +89,11 @@ describe("nested references", () => {
 	it("removes a hidden parent from the items of a list, whatever the gate asked for", async () => {
 		const { fake, gate } = await setupGate(POLICY);
 		const gid = createTask(fake, { parent: "102" });
-		const response = await gate.execute({ method: "GET", path: "/projects/21/tasks" });
+		const response = await gate.execute({
+			method: "GET",
+			path: "/projects/21/tasks",
+			query: { opt_fields: "name,parent" },
+		});
 		const item = items(response.body).find((task) => task.gid === gid);
 		expect(item?.parent).toBeNull();
 		expect(JSON.stringify(response.body)).not.toMatch(/"(?:102|23|34)"/u);

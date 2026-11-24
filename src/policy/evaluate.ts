@@ -1,6 +1,8 @@
 // Copyright 2026 Shinsuke Mori
 // SPDX-License-Identifier: Apache-2.0
 
+import { isDeepStrictEqual } from "node:util";
+
 import {
 	type Action,
 	actionOf,
@@ -244,12 +246,27 @@ function explainResource(policy: Policy, facts: Facts, resource: Resource): Expl
 	return { resource, visible: isVisible(policy, facts, resource), actions };
 }
 
-/** The actions every file in force allows somewhere: what the policy could ever allow. */
+/**
+ * The actions every file in force allows somewhere: what the policy could
+ * ever allow. An `allow` counts for the actions it may decide
+ * ({@link applies}), but not for one that a `deny` of its file names over
+ * the very same scope: the two are equally specific wherever the `allow`
+ * applies, and there `deny` wins.
+ */
 function grantedActions(policy: Policy): Set<Action> {
-	const perLayer = rulesOf(policy).map(
-		(rules) =>
-			new Set(rules.filter((rule) => rule.effect === "allow").flatMap((rule) => [...rule.actions])),
-	);
+	const perLayer = rulesOf(policy).map((rules) => {
+		const denies = rules.filter((rule) => rule.effect === "deny");
+		const allowed = rules
+			.filter((rule) => rule.effect === "allow")
+			.flatMap((allow) => {
+				// The denies over the allow's very scope, found once for all its actions.
+				const over = denies.filter((deny) => isDeepStrictEqual(deny.where, allow.where));
+				return [...allow.actions].filter(
+					(action) => applies(allow, action) && !over.some((deny) => deny.actions.has(action)),
+				);
+			});
+		return new Set(allowed);
+	});
 	const [first = new Set<Action>(), ...rest] = perLayer;
 	return new Set([...first].filter((action) => rest.every((actions) => actions.has(action))));
 }

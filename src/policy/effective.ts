@@ -136,5 +136,39 @@ function labelOf(effective: EffectiveConstraints, key: string): string {
 	return effective.labels.get(key) ?? key;
 }
 
-export { constraintsFor, hasConstraints, labelOf };
+/** JSON for compiled constraints: a value set as `{ "<gid sent>": "<as written>" }`, a member set as a list, a pattern as written. */
+const constraintJson = (constraint: unknown): string =>
+	JSON.stringify(constraint, (_key, value: unknown): unknown => {
+		if (value instanceof Map) {
+			return Object.fromEntries(value as ReadonlyMap<string, unknown>);
+		}
+		if (value instanceof Set) {
+			return [...(value as ReadonlySet<unknown>)];
+		}
+		return value instanceof RegExp ? String(value) : value;
+	});
+
+/**
+ * The constraints in force as a policy writes them, for telling an agent
+ * what its requests meet: each clause that says something, per resource and
+ * member (`custom_fields.<gid>`, named in `labels`) or per action;
+ * `undefined` when none does.
+ */
+function writtenConstraints(effective: EffectiveConstraints): Record<string, unknown> | undefined {
+	const { require, apply, forbid, redact, labels } = effective;
+	const limit = new Map(
+		[...effective.limits].map(([action, limits]) => [
+			action,
+			limits.map(({ limit: { max, per } }) => ({ max, per })),
+		]),
+	);
+	const confirm = [...effective.confirm.keys()];
+	const clauses = { require, apply, forbid, redact, limit, confirm, labels };
+	const said = Object.entries(JSON.parse(constraintJson(clauses)) as Record<string, object>).filter(
+		([, clause]) => Object.keys(clause).length > 0,
+	);
+	return said.length === 0 ? undefined : Object.fromEntries(said);
+}
+
+export { constraintJson, constraintsFor, hasConstraints, labelOf, writtenConstraints };
 export type { EffectiveConstraints, EffectiveLimit };

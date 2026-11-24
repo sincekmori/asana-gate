@@ -92,7 +92,7 @@ const Gid = GidSchema;
 const StringList = z.array(z.string());
 const GidList = z.array(Gid);
 const OptFields = StringList.optional().describe(
-	"Extra fields to include in each object (Asana opt_fields, dotted paths allowed)",
+	"The fields each object carries besides its gid, in place of the default ones (Asana opt_fields, dotted paths allowed)",
 );
 /** A count Asana takes from 1 to 100. */
 const upTo100 = (): z.ZodOptional<z.ZodNumber> => z.number().int().min(1).max(100).optional();
@@ -1508,7 +1508,7 @@ const TOOLS: readonly AnyToolSpec[] = [
 	}),
 ];
 
-/** The curated tools the policy could ever allow: those needing an action some rule allows somewhere. */
+/** The curated tools the policy could ever allow: those needing an action it grants ({@link grantedActions}). */
 function exposedTools(policy: Policy): AnyToolSpec[] {
 	const allowed = grantedActions(policy);
 	return TOOLS.filter((spec) => spec.needs.some((action) => allowed.has(action)));

@@ -15,7 +15,7 @@ import {
 	type Target,
 } from "../gate/plan.ts";
 import { isHttpMethod, matchRoute } from "../gate/router.ts";
-import { augmentOptFields, requestedFields } from "../gate/selection.ts";
+import { askFor, requestedFields } from "../gate/selection.ts";
 import { textsOf } from "../policy/constraints.ts";
 import { type Facts, isVisible, type ObjectState, WORKSPACE_BRANCH } from "../policy/evaluate.ts";
 import { isGid } from "../policy/schema.ts";
@@ -200,7 +200,6 @@ function getOne(type: Resource): OperationRule {
 				...((answer?.placement ?? target.object) && {
 					loaded: answer?.placement ?? target.object,
 				}),
-				...(answer?.selection && { selection: answer.selection }),
 			},
 			...(answer && { answer: answer.body }),
 		};
@@ -971,10 +970,8 @@ async function planBatchAction(
 		.catch((error: unknown) => {
 			throw inAction(error, index);
 		});
-	const optFields = augmentOptFields(
-		plan.response,
-		requested.length > 0 ? requested : undefined,
-		(type) => ctx.loader.requiredFields(type),
+	const { optFields, response } = askFor(plan.response, requested, (type) =>
+		ctx.loader.requiredFields(type),
 	);
 	// Writes carry the body as the policy shaped it, exactly like a single request.
 	let sent: unknown = action.data;
@@ -984,7 +981,7 @@ async function planBatchAction(
 		sent = plan.data;
 	}
 	return {
-		plan,
+		plan: { ...plan, response },
 		action: {
 			...action,
 			...(sent !== undefined && { data: sent }),

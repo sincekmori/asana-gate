@@ -3,9 +3,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { constraintJson } from "../src/cli/explain.ts";
 import { expandActionPattern, expandGroup } from "../src/policy/actions.ts";
 import { compilePolicy } from "../src/policy/compile.ts";
+import { constraintJson } from "../src/policy/effective.ts";
 import { parsePolicy } from "../src/policy/load.ts";
 import { referencesOf } from "../src/policy/references.ts";
 import { needsTaskChain } from "../src/policy/scope.ts";
@@ -110,7 +110,7 @@ describe("constraint values and member names", () => {
 		const constraints = policy.rules.find((rule) => rule.effect === "constrain")?.constraints;
 		const require = constraints?.require.get("task");
 		// Each value as a request sends it, with how the policy wrote it.
-		expect(require?.get("tags")?.notIn).toStrictEqual(new Map([["42", "frozen"]]));
+		expect(require?.get("tags")?.not_in).toStrictEqual(new Map([["42", "frozen"]]));
 		expect(require?.get("assignee")?.in).toStrictEqual(new Map([["51", "me"]]));
 		expect(require?.get("custom_fields.61")?.in).toStrictEqual(new Map([["71", "AI"]]));
 		const apply = constraints?.apply.get("task");
@@ -127,7 +127,7 @@ describe("constraint values and member names", () => {
 `);
 		const require = policy.rules.find((rule) => rule.effect === "constrain")?.constraints?.require;
 		const shown = (key: string): string => constraintJson(require?.get("task")?.get(key));
-		expect(shown("tags")).toBe('{"notIn":{"42":"frozen"}}');
+		expect(shown("tags")).toBe('{"not_in":{"42":"frozen"}}');
 		expect(shown("name")).toBe('{"matches":"/^AI: /u"}');
 	});
 

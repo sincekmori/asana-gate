@@ -62,7 +62,7 @@ interface Shaped {
 
 /** Whether `requirements` compare a user member with sets of users, which hold gids. */
 const comparesUsers = (key: string, requirements: readonly FieldRequirement[]): boolean =>
-	USER_MEMBERS.has(key) && requirements.some((r) => r.in !== undefined || r.notIn !== undefined);
+	USER_MEMBERS.has(key) && requirements.some((r) => r.in !== undefined || r.not_in !== undefined);
 
 /** A user member's value with each user it names (`me`, an email) as their gid; one that names nobody stays. */
 async function withUserGids(value: unknown, loader: ShapeScope["loader"]): Promise<unknown> {

@@ -5,7 +5,7 @@ import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { CLIENT_DEFAULTS } from "../asana/client.ts";
-import { isObject, type JsonObject } from "../json.ts";
+import { isObject, type JsonObject, objectIn } from "../json.ts";
 import { messageOf } from "../log.ts";
 import { envValue, firstWhere, isFile, isMissing, readIfPresent } from "../system.ts";
 import { parseYaml, validated } from "../yaml.ts";
@@ -174,8 +174,7 @@ interface Merging {
 function mergeLayer(target: JsonObject, layer: Merging, origins: Map<string, string>): void {
 	for (const [key, value] of Object.entries(layer.values)) {
 		if (isObject(value)) {
-			const nested = isObject(target[key]) ? target[key] : {};
-			target[key] = nested;
+			const nested = objectIn(target, key);
 			mergeLayer(nested, { ...layer, values: value, prefix: `${layer.prefix}${key}.` }, origins);
 		} else if (value !== undefined) {
 			target[key] = value;

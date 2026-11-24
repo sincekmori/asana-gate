@@ -113,13 +113,27 @@ function cut(value: unknown, selection: Selection): unknown {
 }
 
 /**
- * An object cut back to the members `selection` names (and its `gid`), the
- * way Asana would have answered that selection alone: members selected
- * alone are kept as they are, since {@link widenSelection} never selects
- * inside them.
+ * An object without the members `selection` leaves out altogether; all of
+ * it without a selection. What is left is what needs checking, before
+ * {@link pick} cuts inside the members kept.
  */
-function pick(object: AsanaObject, selection: Selection): AsanaObject {
-	const picked = cut(object, selection);
+function keep(object: AsanaObject, selection: Selection | undefined): AsanaObject {
+	return selection === undefined
+		? object
+		: Object.fromEntries(
+				Object.entries(object).filter(([name]) => name === "gid" || selection.has(name)),
+			);
+}
+
+/**
+ * An object cut back to the members `selection` names (and its `gid`); all
+ * of it without a selection. A member selected alone is kept as it is:
+ * after {@link widenSelection}, which never selects inside one, that is how
+ * Asana would have answered the selection alone, and after {@link askFor}
+ * it keeps what the gate selected inside it.
+ */
+function pick(object: AsanaObject, selection: Selection | undefined): AsanaObject {
+	const picked = selection === undefined ? object : cut(object, selection);
 	return isObject(picked) ? picked : {};
 }
 
@@ -168,59 +182,74 @@ const DEFAULT_LIST_FIELDS: Partial<Record<Resource, readonly string[]>> = {
 /** Per resource, the `opt_fields` the loader needs to derive an object's facts. */
 type RequiredFields = (type: Resource) => readonly string[];
 
-/** What post-processing needs the response to carry, as `opt_fields`. */
-function neededFields(
+/**
+ * The fields a response keeps of what Asana sends: the caller's, or for a
+ * list the gate must name fields for, those that stand in for Asana's
+ * default; `undefined` where Asana's default stands.
+ */
+function keptFields(
 	response: ResponsePlan,
 	requested: readonly string[] | undefined,
-	requiredFields: RequiredFields,
 ): readonly string[] | undefined {
-	if (response.kind === "raw" || response.kind === "custom") {
+	if (response.kind !== "list") {
 		return requested;
 	}
 	if (response.type === "mixed") {
-		// Each item names its type, and carries what the facts of any expected type need.
-		const expected = response.expect ?? [];
-		if (expected.length === 0) {
-			// Asana names an item's type only when it is selected, and an item of no known type is dropped.
-			return requested === undefined ? undefined : [...new Set([...requested, "resource_type"])];
-		}
-		return [
-			...new Set([
-				...(requested ?? ["name"]),
-				"resource_type",
-				...expected.flatMap((type) => requiredFields(type)),
-			]),
-		];
+		// Each item names its type: Asana names it only when it is selected, and an item of no known type is dropped.
+		const fields = (response.expect ?? []).length > 0 ? (requested ?? ["name"]) : requested;
+		return fields === undefined ? undefined : [...fields, "resource_type"];
 	}
 	if (response.facts !== undefined) {
 		return requested;
 	}
-	const required = requiredFields(response.type);
-	if (response.kind === "item") {
-		// Without `opt_fields` Asana returns the full object, which carries every required field.
-		return requested === undefined ? undefined : [...new Set([...requested, ...required])];
-	}
-	const base = requested ?? DEFAULT_LIST_FIELDS[response.type] ?? ["name"];
-	return [...new Set([...base, ...required])];
+	return requested ?? DEFAULT_LIST_FIELDS[response.type] ?? ["name"];
+}
+
+/** How to ask for a response, and how to process it. */
+interface Asked {
+	/** The `opt_fields` to send; `undefined` leaves Asana's default alone. */
+	readonly optFields: readonly string[] | undefined;
+	/** The plan, with the selection its objects are cut back to. */
+	readonly response: ResponsePlan;
 }
 
 /**
- * The `opt_fields` to send so the response carries what post-processing
- * needs; `undefined` leaves the caller's choice (or Asana's default) alone.
+ * Asks for a response so that it carries what post-processing needs: the
+ * fields kept ({@link keptFields}, from the fields the request names, if
+ * any), and for objects judged by themselves, what their facts are derived
+ * from. The objects are cut back to the fields kept once they are checked
+ * ({@link pick}). Both are sent as one list, so a member kept alone that the
+ * facts read inside comes back with what the gate selected inside it:
+ * leaving it alone, as {@link widenSelection} does for one object, would
+ * mean loading every object of a list beside it.
  */
-function augmentOptFields(
+function askFor(
 	response: ResponsePlan,
-	requested: readonly string[] | undefined,
+	requested: readonly string[],
 	requiredFields: RequiredFields,
-): readonly string[] | undefined {
-	const fields = neededFields(response, requested, requiredFields);
-	// Every nested reference the response carries must name its type, or it could not be checked.
-	return fields === undefined ? undefined : withReferenceTypes(fields);
+): Asked {
+	const kept = keptFields(response, requested.length > 0 ? requested : undefined);
+	if (kept === undefined) {
+		return { optFields: undefined, response };
+	}
+	if (response.kind === "raw" || response.kind === "custom") {
+		return { optFields: withReferenceTypes(kept), response };
+	}
+	// A mixed list carries what the facts of any type it expects need.
+	const types = response.type === "mixed" ? (response.expect ?? []) : [response.type];
+	const needed = response.facts === undefined ? types.flatMap((type) => requiredFields(type)) : [];
+	const selection = parseSelection(kept);
+	return {
+		// Every nested reference the response carries must name its type, or it could not be checked.
+		optFields: withReferenceTypes([...kept, ...needed]),
+		response: selection === undefined ? response : { ...response, selection },
+	};
 }
 
 export {
-	augmentOptFields,
+	askFor,
 	fieldsOf,
+	keep,
 	parseOptFields,
 	parseSelection,
 	pick,

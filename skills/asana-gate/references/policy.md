@@ -216,6 +216,7 @@ Limits count per rule and action inside one gate process, over a sliding window,
    A `limit` or `confirm` on a read action applies to lists of that resource as well, once per request.
 9. Every object in a response carries `allowed_actions`, the actions the policy currently allows on it, so an agent can plan before acting; members under `redact` are removed.
    Nested references to hidden objects (a subtask's `parent`, `dependencies`, a job's `new_task`, …) are removed, and visible ones are redacted as their own place in the policy says.
+   An object is answered with the fields the request asked for, without those the gate read beside them to judge it; the objects of a list asked for without `opt_fields` carry their `gid` and name, or what tells apart an object that has no name.
 
 Rule order in the file does not matter.
 `asana-gate explain <gid>` shows how the policy treats one object, which rules decided each action, and the constraints in force on it.

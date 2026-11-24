@@ -4,10 +4,10 @@
 import type { CallToolResult } from "@modelcontextprotocol/server";
 
 import { AsanaApiError } from "../asana/errors.ts";
-import type { Resource } from "../catalog/resources.ts";
 import { GateError } from "../gate/errors.ts";
 import type { GateResponse } from "../gate/gate.ts";
 import { messageOf } from "../log.ts";
+import { type EffectiveConstraints, writtenConstraints } from "../policy/effective.ts";
 import type { Explanation } from "../policy/evaluate.ts";
 
 /** How gate responses and errors become MCP tool results. */
@@ -33,17 +33,22 @@ function errorResult(error: unknown): CallToolResult {
 	return { content: [{ type: "text", text: messageOf(error) }], isError: true };
 }
 
-/** What `asana_allowed_actions` answers: the actions the policy allows and denies on one object. */
+/**
+ * What `asana_allowed_actions` answers: the actions the policy allows and
+ * denies on one object, and the constraints in force where it is.
+ */
 function explanationBody(
-	type: Resource,
 	gid: string,
 	explanation: Explanation,
+	effective: EffectiveConstraints,
 ): Record<string, unknown> {
+	const constraints = writtenConstraints(effective);
 	return {
-		resource_type: type,
+		resource_type: explanation.resource,
 		gid,
 		allowed_actions: explanation.actions.filter((d) => d.allowed).map((d) => d.action),
 		denied_actions: explanation.actions.filter((d) => !d.allowed).map((d) => d.action),
+		...(constraints && { constraints }),
 	};
 }
 

@@ -4,24 +4,24 @@
 import { cp, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { isObject, type JsonObject, parseJsonc } from "../json.ts";
+import { isObject, type JsonObject, objectIn, parseJsonc } from "../json.ts";
 import { messageOf } from "../log.ts";
 import { POLICY_FILE, PROJECT_DIR, TOKEN_FILE } from "../settings/paths.ts";
 import { firstWhere, isFile, patchedJson, readIfPresent } from "../system.ts";
 import { parseYaml } from "../yaml.ts";
 import { type Finding, warning } from "./audit.ts";
 import { UsageError } from "./context.ts";
+import { guardToken, tokenNotes } from "./token-guard.ts";
 
 /**
  * How a repository is wired for a coding agent: the gate as a project MCP
  * server in the file the agent reads its servers from, a copy of the skill
- * where the agent reads skills, and, where the agent honors one, a rule that
- * keeps the token file from it. The MCP server keeps every copy of the skill
+ * where the agent reads skills, and, where the agent honors them, the rules
+ * that keep the token from it. The MCP server keeps every copy of the skill
  * current.
  */
 
 const SKILL = "asana-gate";
-const TOKEN_DENY = `Read(./${PROJECT_DIR}/${TOKEN_FILE})`;
 /** The member every agent's MCP file lists its servers under. */
 const SERVERS = "mcpServers";
 
@@ -34,7 +34,7 @@ interface Agent {
 	readonly skillsDirs: readonly [string, ...string[]];
 	/** The file its standing instructions live in. */
 	readonly instructionsFile: string;
-	/** The settings file that takes a rule keeping it from the token file, when it honors one. */
+	/** The settings file that takes the rules keeping it from the token, when it honors them. */
 	readonly tokenGuard?: string;
 }
 
@@ -168,11 +168,15 @@ function instructionsFor(agent: Agent): string {
 	].join("\n");
 }
 
-/** Wires `projectDir` for `agents`: skill copies, MCP entries and, where honored, the token rule. */
+/**
+ * Wires `projectDir` for `agents` to the gate of `version`: skill copies,
+ * MCP entries and, where honored, the rules that keep the token, read from
+ * the variable `tokenEnv` or a token file, from the agent.
+ */
 async function wireAgents(
 	projectDir: string,
 	agents: readonly Agent[],
-	version: string,
+	{ version, tokenEnv }: { readonly version: string; readonly tokenEnv: string },
 ): Promise<Wiring> {
 	const source = await packagedSkillDir();
 	const skillDirs = [...new Set(agents.map((agent) => agent.skillsDirs[0]))];
@@ -184,21 +188,12 @@ async function wireAgents(
 	const writes = await Promise.all([
 		...mcpFiles.map((file) =>
 			patchedJson(join(projectDir, file), usage, (document) => {
-				const current = document[SERVERS];
-				const servers = isObject(current) ? current : {};
-				servers[SKILL] = serverEntry(version);
-				document[SERVERS] = servers;
+				objectIn(document, SERVERS)[SKILL] = serverEntry(version);
 			}),
 		),
 		...guards.map((file) =>
 			patchedJson(join(projectDir, file), usage, (document) => {
-				const permissions = isObject(document.permissions) ? document.permissions : {};
-				const deny = Array.isArray(permissions.deny) ? (permissions.deny as unknown[]) : [];
-				if (!deny.includes(TOKEN_DENY)) {
-					deny.push(TOKEN_DENY);
-				}
-				permissions.deny = deny;
-				document.permissions = permissions;
+				guardToken(document, tokenEnv);
 			}),
 		),
 	]);
@@ -215,12 +210,7 @@ async function wireAgents(
 			file: agent.instructionsFile,
 			text: instructionsFor(agent),
 		})),
-		notes:
-			unguarded.length === 0
-				? []
-				: [
-						`${unguarded.join(" and ")} cannot be kept from reading files in the project, so keep the token out of it: "asana-gate token set --user" or $ASANA_ACCESS_TOKEN.`,
-					],
+		notes: tokenNotes(tokenEnv, guards.length > 0, unguarded),
 	};
 }
 
