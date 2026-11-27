@@ -1,5 +1,21 @@
 # asana-gate
 
+## 0.5.1
+
+### Patch Changes
+
+- ecdddc9: The objects an event or a notification names are now shown as the policy says, like any other reference: `resource.notes` on `GET /events` read a task's redacted notes (verified live).
+  Both are now judged whatever fields a request selects: the gate asks for an event's `action`, `resource` and `parent` and a notification's `work_objects` beside the caller's fields and cuts the answer back to those, where an event of a hidden task used to pass once `opt_fields` left its `resource` out (verified live), and the event of a deleted object to go once they left its `parent` out.
+- ecdddc9: An object the policy hides is now removed wherever an answer nests it, and a visible one redacted as the place it lives in says, where both used to hold only for the tasks, projects, sections, portfolios, goals and teams an object carries directly.
+  A project and a section named by a task's `memberships` and the values of a `reference` custom field passed unchecked, so `memberships.project.notes` read a project's redacted notes, a task of a policy that allows tasks alone showed the project it is in, and a reference custom field showed the name of a hidden task (verified live).
+  So did an object that lives inside another: a project showed its latest status update, text included, whatever the policy says about status updates there, and a notification the text of its story (verified live).
+  An object that lives at workspace level, such as a task's assignee, still stays where a visible object names it, and now loses the members the policy redacts.
+  A `reference` custom field that loses a value now answers `display_value: null`, since Asana's text for the field names every object it holds, and the gate asks for the references beside that text when a request selects the text alone.
+  An answer costs a request for each project, section, status update or story it shows that the gate has not loaded already, unless the answer itself carries what the object lives in; nothing is loaded for a member the answer leaves out.
+- ecdddc9: A create or an update that sets a `reference` custom field to an object the policy hides is now refused with the 404 of a gid that names nothing, like every other request that names a hidden object: it used to reach Asana, whose answer told a hidden object (accepted, or refused for its type) from one that does not exist (verified live).
+  To tell such a field from any other, the gate reads the definition of each custom field a request sets, once per half minute.
+  A hidden object among several types a request may name (the item of a portfolio, the resource of a goal relationship) now answers with the same message as one that does not exist, where the message used to name the hidden object's type.
+
 ## 0.5.0
 
 ### Minor Changes
