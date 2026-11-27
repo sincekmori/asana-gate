@@ -36,16 +36,16 @@ function createLogger(level: LogLevel = "warn", sink: Sink = stderrSink): Logger
 		}
 	};
 	return {
-		error: (message) => {
+		error: (message): void => {
 			emit("error", message);
 		},
-		warn: (message) => {
+		warn: (message): void => {
 			emit("warn", message);
 		},
-		info: (message) => {
+		info: (message): void => {
 			emit("info", message);
 		},
-		debug: (message) => {
+		debug: (message): void => {
 			emit("debug", message);
 		},
 	};

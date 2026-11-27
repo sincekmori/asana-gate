@@ -1279,7 +1279,7 @@ interface Named {
 function naming(rule: OperationRule, named: (ctx: PlanContext) => readonly Named[]): OperationRule {
 	return {
 		...rule,
-		async plan(ctx) {
+		async plan(ctx): Promise<Plan> {
 			const targets = await Promise.all(named(ctx).map(({ gid, types }) => ctx.probe(gid, types)));
 			const plan = await rule.plan(ctx);
 			return {
@@ -1300,7 +1300,7 @@ function defining(rule: OperationRule, ref: BodyRef, operation: OperationId): Op
 	const { field } = ref;
 	return {
 		...rule,
-		async plan(ctx) {
+		async plan(ctx): Promise<Plan> {
 			const plan = await rule.plan(ctx);
 			const value = ctx.body[field];
 			if (!isObject(value)) {
@@ -1351,7 +1351,7 @@ function removeCustomFieldSetting(on: Resource): OperationRule {
 	});
 	return {
 		...rule,
-		async plan(ctx) {
+		async plan(ctx): Promise<Plan> {
 			const plan = await rule.plan(ctx);
 			const field = plan.checks.find((check) => check.target.type === "custom_field")?.target;
 			if (field?.object?.is_global_to_workspace !== false) {

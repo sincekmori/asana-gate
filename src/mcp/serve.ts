@@ -111,7 +111,7 @@ async function serveHttp(options: HttpOptions): Promise<Serving> {
 	const hostForUrl = options.host.includes(":") ? `[${options.host}]` : options.host;
 	return {
 		endpoint: `http://${hostForUrl}:${port}/mcp`,
-		close: async () => {
+		close: async (): Promise<void> => {
 			await handler.close();
 			server.close();
 			await once(server, "close");

@@ -52,7 +52,7 @@ async function connect(answer: Answer): Promise<Connected> {
 		client,
 		fake,
 		asked: () => asked,
-		close: async () => {
+		close: async (): Promise<void> => {
 			await client.close();
 			await server.close();
 		},

@@ -33,7 +33,7 @@ export async function connectMcp(
 	return {
 		client,
 		fake,
-		close: async () => {
+		close: async (): Promise<void> => {
 			await client.close();
 			await server.close();
 		},

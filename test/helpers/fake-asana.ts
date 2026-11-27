@@ -513,7 +513,7 @@ function createStore(): ObjectStore {
 		byGid: (gid) =>
 			[...types.values()].map((objects) => objects.get(gid)).find((object) => object !== undefined),
 		all: (type) => [...(types.get(type)?.values() ?? [])],
-		put: (object) => {
+		put: (object): Json => {
 			const type = String(object.resource_type);
 			const objects = types.get(type) ?? new Map<string, Json>();
 			types.set(type, objects);
@@ -1189,7 +1189,7 @@ function topLevelRoute(world: World, spec: OperationSpec): Handler | undefined {
 		return ({ data }) => ({ one: world.settle(world.fresh(type, data)), status: 201 });
 	}
 	return spec.method === "GET"
-		? ({ query }) => ({ many: world.filtered(world.store.all(type), query) })
+		? ({ query }): Answer => ({ many: world.filtered(world.store.all(type), query) })
 		: undefined;
 }
 
@@ -1293,7 +1293,7 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 		String(world.lookup(type, gid).gid);
 	return {
 		createTask: ({ data }) => ({ one: world.createTask(data), status: 201 }),
-		updateTask: ({ params, data }) => {
+		updateTask: ({ params, data }): Answer => {
 			// A task's parent changes only through setParent (verified live, see the README).
 			if ("parent" in data) {
 				refuse(error(400, "parent: cannot be changed with PUT /tasks/{task_gid}; use setParent"));
@@ -1304,7 +1304,7 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			one: world.createTask({ ...data, parent: task(params).gid }),
 			status: 201,
 		}),
-		getTasks: ({ query }) => {
+		getTasks: ({ query }): Answer => {
 			const project = query.get("project");
 			const tasks =
 				project === null
@@ -1312,32 +1312,32 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 					: world.tasksOfProject(gidIn("project", project));
 			return { many: world.filtered(tasks, query) };
 		},
-		getTasksForProject: ({ params, query }) => {
+		getTasksForProject: ({ params, query }): Answer => {
 			const tasks = world.tasksOfProject(gidIn("project", params.project_gid));
 			return { many: world.filtered(tasks, query) };
 		},
-		getTasksForSection: ({ params, query }) => {
+		getTasksForSection: ({ params, query }): Answer => {
 			const tasks = world.tasksOfSection(gidIn("section", params.section_gid));
 			return { many: world.filtered(tasks, query) };
 		},
 		getSubtasksForTask: ({ params }) => ({ many: world.subtasksOf(String(task(params).gid)) }),
-		addProjectForTask: ({ params, data }) => {
+		addProjectForTask: ({ params, data }): Answer => {
 			const moved = task(params);
 			world.addToProject(moved, bodyObject(world, data, "project"), data);
 			return { one: moved };
 		},
-		removeProjectForTask: ({ params, data }) => {
+		removeProjectForTask: ({ params, data }): Answer => {
 			const moved = task(params);
 			const project = String(bodyObject(world, data, "project").gid);
 			moved.memberships = membershipsOf(moved).filter((m) => gidOf(m.project) !== project);
 			return { one: moved };
 		},
-		addTaskForSection: ({ params, data }) => {
+		addTaskForSection: ({ params, data }): Answer => {
 			const section = world.lookup("section", params.section_gid);
 			world.moveToSection(bodyObject(world, data, "task"), section, positionOf(data, "top"));
 			return { one: section };
 		},
-		setParentForTask: ({ params, data }) => {
+		setParentForTask: ({ params, data }): Answer => {
 			const moved = task(params);
 			if (!("parent" in data)) {
 				refuse(error(400, "parent: Missing input"));
@@ -1346,7 +1346,7 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			world.setParent(moved, parent, positionOf(data, "bottom"));
 			return { one: moved };
 		},
-		addDependentsForTask: ({ params, data }) => {
+		addDependentsForTask: ({ params, data }): Answer => {
 			const blocker = refTo(task(params));
 			for (const dependent of objectsIn(world, data.dependents)) {
 				const others = gidsIn(dependent.dependencies).filter((gid) => gid !== blocker.gid);
@@ -1354,7 +1354,7 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			}
 			return { one: task(params) };
 		},
-		removeDependentsForTask: ({ params, data }) => {
+		removeDependentsForTask: ({ params, data }): Answer => {
 			const blocker = String(task(params).gid);
 			for (const dependent of objectsIn(world, data.dependents)) {
 				const others = gidsIn(dependent.dependencies).filter((gid) => gid !== blocker);
@@ -1362,11 +1362,11 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			}
 			return { one: task(params) };
 		},
-		getTaskForCustomID: ({ params }) => {
+		getTaskForCustomID: ({ params }): Answer => {
 			const found = world.store.all("task").find((t) => t.custom_id === params.custom_id);
 			return { one: found ?? refuse(notFound("task", params.custom_id ?? "")) };
 		},
-		getTaskCountsForProject: ({ params }) => {
+		getTaskCountsForProject: ({ params }): Answer => {
 			const tasks = world.tasksOfProject(gidIn("project", params.project_gid));
 			const completed = tasks.filter((t) => t.completed === true).length;
 			const counts = {
@@ -1382,14 +1382,14 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 		getSectionsForProject: ({ params }) => ({
 			many: world.sectionsOf(gidIn("project", params.project_gid)),
 		}),
-		createSectionForProject: ({ params, data }) => {
+		createSectionForProject: ({ params, data }): Answer => {
 			const project = gidIn("project", params.project_gid);
 			const section = world.fresh("section", { ...data, project });
 			const order = world.synced(`project:${project}`, world.sectionsOf(project));
 			place(order, String(section.gid), positionOf(data, "bottom"));
 			return { one: world.store.put(section), status: 201 };
 		},
-		updateSection: ({ params, data }) => {
+		updateSection: ({ params, data }): Answer => {
 			const section = world.write(world.lookup("section", params.section_gid), data);
 			const project = gidOf(section.project) ?? "";
 			if ("insert_before" in data || "insert_after" in data) {
@@ -1398,7 +1398,7 @@ function taskHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			}
 			return { one: section };
 		},
-		insertSectionForProject: ({ params, data }) => {
+		insertSectionForProject: ({ params, data }): Answer => {
 			const project = gidIn("project", params.project_gid);
 			const section = bodyObject(world, data, "section");
 			const sibling = { insert_before: data.before_section, insert_after: data.after_section };
@@ -1427,7 +1427,7 @@ function otherHandlers(world: World): Partial<Record<OperationId, Handler>> {
 		};
 	return {
 		getEvents: eventsRoute,
-		getWorkspaceEvents: (request) => {
+		getWorkspaceEvents: (request): Answer => {
 			world.lookup("workspace", request.params.workspace_gid);
 			return eventsRoute(request);
 		},
@@ -1445,14 +1445,14 @@ function otherHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			segment: "custom_field_settings",
 			type: "custom_field_setting",
 		}),
-		addUserForWorkspace: ({ params, data }) => {
+		addUserForWorkspace: ({ params, data }): Answer => {
 			const workspace = refTo(world.lookup("workspace", params.workspace_gid));
 			const user = bodyObject(world, data, "user");
 			const others = gidsIn(user.workspaces).filter((gid) => gid !== workspace.gid);
 			user.workspaces = [...others.map((gid) => ref("workspace", gid)), workspace];
 			return { one: user };
 		},
-		removeUserForWorkspace: ({ params, data }) => {
+		removeUserForWorkspace: ({ params, data }): Answer => {
 			const workspace = String(world.lookup("workspace", params.workspace_gid).gid);
 			const user = bodyObject(world, data, "user");
 			const others = gidsIn(user.workspaces).filter((gid) => gid !== workspace);
@@ -1460,7 +1460,7 @@ function otherHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			return { one: {} };
 		},
 		rejectAccessRequest: decide("rejected"),
-		insertEnumOptionForCustomField: ({ params, data }) => {
+		insertEnumOptionForCustomField: ({ params, data }): Answer => {
 			const field = world.lookup("custom_field", params.custom_field_gid);
 			const option = bodyObject(world, data, "enum_option");
 			const sibling = {
@@ -1477,13 +1477,13 @@ function otherHandlers(world: World): Partial<Record<OperationId, Handler>> {
 		typeaheadForWorkspace: (request) => typeahead(world, request),
 		getItemsForPortfolio: ({ params }) => ({ many: objectsIn(world, items(params)) }),
 		// The user's favorites of the type the query names (Asana requires one).
-		getFavoritesForUser: ({ params, query }) => {
+		getFavoritesForUser: ({ params, query }): Answer => {
 			const owner = String(world.lookup("user", params.user_gid).gid);
 			const type = query.get("resource_type");
 			const favorites = objectsIn(world, world.listAt(`favorites:${owner}`));
 			return { many: favorites.filter((object) => object.resource_type === type) };
 		},
-		addItemForPortfolio: ({ params, data }) => {
+		addItemForPortfolio: ({ params, data }): Answer => {
 			const item = bodyObject(world, data, "item");
 			if (item.resource_type !== "project" && item.resource_type !== "portfolio") {
 				refuse(error(400, "item: must be a project or a portfolio"));
@@ -1491,13 +1491,13 @@ function otherHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			place(items(params), String(item.gid), positionOf(data, "bottom"));
 			return { one: item };
 		},
-		removeItemForPortfolio: ({ params, data }) => {
+		removeItemForPortfolio: ({ params, data }): Answer => {
 			const list = items(params);
 			const at = list.indexOf(String(bodyObject(world, data, "item").gid));
 			list.splice(at, at === -1 ? 0 : 1);
 			return { one: {} };
 		},
-		addUserForTeam: ({ params, data }) => {
+		addUserForTeam: ({ params, data }): Answer => {
 			const user = String(bodyObject(world, data, "user").gid);
 			const existing = membershipsOfTeam(params).find((m) => gidOf(m.user) === user);
 			const membership = existing ?? {
@@ -1511,7 +1511,7 @@ function otherHandlers(world: World): Partial<Record<OperationId, Handler>> {
 			};
 			return { one: store.put(membership) };
 		},
-		removeUserForTeam: ({ params, data }) => {
+		removeUserForTeam: ({ params, data }): Answer => {
 			const user = String(bodyObject(world, data, "user").gid);
 			const leaving = membershipsOfTeam(params).filter((m) => gidOf(m.user) === user);
 			for (const membership of leaving) {
@@ -1525,7 +1525,7 @@ function otherHandlers(world: World): Partial<Record<OperationId, Handler>> {
 				membershipsOfTeam(params).map((m) => m.user),
 			),
 		}),
-		getTeamsForUser: ({ params, query }) => {
+		getTeamsForUser: ({ params, query }): Answer => {
 			const user = String(world.lookup("user", params.user_gid).gid);
 			const memberships = store.all("team_membership").filter((m) => gidOf(m.user) === user);
 			const teams = objectsIn(

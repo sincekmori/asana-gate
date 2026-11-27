@@ -99,6 +99,7 @@ async function runMcp(argv: readonly string[], version: string): Promise<number>
 	// end must settle the wait: signal listeners do not keep the event loop
 	// alive, so a wait left pending would end the process with Node's exit code
 	// 13 (unsettled top-level await) instead of 0.
+	// oxlint-disable-next-line typescript/no-unsafe-class-instance-assignment -- process is an EventEmitter, which Node's types declare as an interface
 	const stops = [once(process, "SIGINT"), once(process, "SIGTERM")];
 	await Promise.race(serving.ended === undefined ? stops : [...stops, serving.ended]);
 	await serving.close();

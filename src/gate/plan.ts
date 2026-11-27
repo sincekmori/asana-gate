@@ -200,11 +200,11 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 	};
 	return {
 		...request,
-		async anchor(type, gid) {
+		async anchor(type, gid): Promise<Target> {
 			const named = given(type, gid);
 			return visible(type, named, await loader.load(type, named));
 		},
-		async read(type, gid) {
+		async read(type, gid): Promise<Read> {
 			const named = given(type, gid);
 			const { fields, selection } = parseOptFields(request.query.opt_fields);
 			if (readOperationOf(type) !== request.operationId || (fields.length > 0 && !selection)) {
@@ -216,7 +216,7 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 			const body = { data: target.object };
 			return { target, answer: { body, ...(placement && { placement }) } };
 		},
-		async probe(gid, types) {
+		async probe(gid, types): Promise<Target> {
 			const label = types[0] ?? "object";
 			const named = given(label, gid);
 			const loaded = await loader.probe(named, types);
@@ -225,19 +225,19 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 			}
 			return visible(loaded.type, named, loaded);
 		},
-		workspace(gid) {
+		workspace(gid): Target {
 			if (gid !== undefined && gid !== policy.workspace) {
 				throw notFound("workspace", gid);
 			}
 			return { type: "workspace", gid: policy.workspace, facts: workspaceFacts(policy.workspace) };
 		},
-		bodyGid(field) {
+		bodyGid(field): string | undefined {
 			return gidOf(request.body[field]);
 		},
-		bodyGids(field) {
+		bodyGids(field): string[] {
 			return gidsOf(request.body[field]);
 		},
-		async shape(facts, target, body) {
+		async shape(facts, target, body): Promise<Record<string, unknown>> {
 			const shaped = await shapeBody({ policy, facts, loader }, target, body ?? request.body);
 			if (shaped.problems.length > 0) {
 				violations.push({
