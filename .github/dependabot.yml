@@ -18,8 +18,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # The same wait as the npm dependencies above.
     cooldown:
-      default-days: 7
+      default-days: 1
     groups:
       actions:
         patterns: ["*"]
