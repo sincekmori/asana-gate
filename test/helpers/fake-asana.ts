@@ -566,12 +566,31 @@ function ordered(list: readonly string[], objects: readonly Json[]): Json[] {
 	return objects.toSorted((a, b) => rank(a) - rank(b));
 }
 
+/**
+ * A project's latest status update, in the two members that hold it: compact
+ * in `current_status_update`, and whole under its deprecated type in
+ * `current_status`, with the same gid (verified live).
+ */
+function currentStatus(store: ObjectStore, project: string, member: string): unknown {
+	const latest = store.all("status_update").findLast((update) => gidOf(update.parent) === project);
+	if (member === "current_status_update") {
+		return latest === undefined ? null : refTo(latest);
+	}
+	if (member === "current_status") {
+		return latest === undefined ? null : { ...latest, resource_type: "project_status" };
+	}
+	return undefined;
+}
+
 /** Members Asana derives from other objects. */
 function derived(store: ObjectStore, object: Json, member: string): unknown {
+	const gid = String(object.gid);
+	if (object.resource_type === "project") {
+		return currentStatus(store, gid, member);
+	}
 	if (object.resource_type !== "task") {
 		return undefined;
 	}
-	const gid = String(object.gid);
 	switch (member) {
 		case "projects": {
 			return membershipsOf(object).map((membership) => membership.project);
@@ -591,7 +610,34 @@ function derived(store: ObjectStore, object: Json, member: string): unknown {
 	}
 }
 
-/** The value a custom field takes from a request value: an enum option, a number or a text. */
+/**
+ * The objects a `reference` custom field takes from a request value: one gid
+ * or a list of them, each naming an object of a type the field takes
+ * (verified live, like the refusals).
+ */
+function referencesOf(store: ObjectStore, field: Json, value: unknown): Json[] {
+	if (typeof value !== "string" && !Array.isArray(value)) {
+		return refuse(error(400, "reference_value: Not an array"));
+	}
+	const taken = Array.isArray(field.input_restrictions) ? field.input_restrictions : [];
+	return (Array.isArray(value) ? value : [value]).map((gid: unknown, index) => {
+		if (typeof gid !== "string") {
+			return refuse(error(400, `reference_value: [${index}]: Not a valid GID type: ${typeof gid}`));
+		}
+		const named =
+			store.byGid(gid) ?? refuse(error(400, `reference_value: [${index}]: Unknown object: ${gid}`));
+		return taken.includes(named.resource_type)
+			? named
+			: refuse(
+					error(
+						400,
+						"The provided reference value does not match the custom field's input resource types.",
+					),
+				);
+	});
+}
+
+/** The value a custom field takes from a request value: an enum option, references, a number or a text. */
 function fieldValue(store: ObjectStore, field: Json, value: unknown): Json {
 	const option = (gid: unknown): Json => {
 		const key = gidOf(gid) ?? "";
@@ -621,6 +667,15 @@ function fieldValue(store: ObjectStore, field: Json, value: unknown): Json {
 			return {
 				number_value: value,
 				display_value: typeof value === "number" ? String(value) : null,
+			};
+		}
+		case "reference": {
+			const named = referencesOf(store, field, value);
+			return {
+				reference_value: named.map((object) => refTo(object)),
+				// Asana's text for the value: the names, or nothing for none (verified live).
+				display_value:
+					named.length > 0 ? named.map((object) => textOf(object.name)).join(", ") : null,
 			};
 		}
 		default: {

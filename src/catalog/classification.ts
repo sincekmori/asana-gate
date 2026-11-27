@@ -821,11 +821,31 @@ async function mapData(
 /** The members of an event's `change` that may name another object. */
 const CHANGE_VALUES = ["new_value", "added_value", "removed_value"] as const;
 
+/** An event's `change` with the values that name hidden objects cleared. */
+async function visibleChange(
+	ctx: PlanContext,
+	change: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+	const values = await Promise.all(
+		CHANGE_VALUES.map(async (key) => {
+			const value = change[key];
+			const named = isObject(value) && typeof value.resource_type === "string";
+			const visible = !named || (await refVisible(ctx, refOf(value), PARENT_TYPES));
+			return [key, visible ? value : null] as const;
+		}),
+	);
+	return { ...change, ...Object.fromEntries(values.filter(([key]) => key in change)) };
+}
+
+/** The fields {@link visibleEvent} judges an event by. */
+const EVENT_FIELDS = ["action", "resource", "parent"];
+
 /**
  * An event as an agent may see it, or `undefined` when it points at hidden
  * objects. A deleted object cannot be loaded any more, so a `deleted` event
- * is kept when its parent is visible; values in `change` that name hidden
- * objects are cleared.
+ * is kept when its parent is visible, with its reference as Asana names it;
+ * values in `change` that name hidden objects are cleared, and everything
+ * else the event embeds is shown as the policy says.
  */
 async function visibleEvent(
 	ctx: PlanContext,
@@ -843,19 +863,12 @@ async function visibleEvent(
 		return undefined;
 	}
 	const { change } = event;
-	if (!isObject(change)) {
-		return event;
+	const cleared = isObject(change) ? { ...event, change: await visibleChange(ctx, change) } : event;
+	if (!deleted) {
+		return ctx.scrub(cleared);
 	}
-	const values = await Promise.all(
-		CHANGE_VALUES.map(async (key) => {
-			const value = change[key];
-			const named = isObject(value) && typeof value.resource_type === "string";
-			const visible = !named || (await refVisible(ctx, refOf(value), PARENT_TYPES));
-			return [key, visible ? value : null] as const;
-		}),
-	);
-	const kept = Object.fromEntries(values.filter(([key]) => key in change));
-	return { ...event, change: { ...change, ...kept } };
+	const { resource, ...rest } = cleared;
+	return { ...(await ctx.scrub(rest)), ...("resource" in cleared && { resource }) };
 }
 
 /** `GET /events` and `GET /workspaces/{gid}/events`: every event must point at visible objects. */
@@ -866,6 +879,7 @@ function eventsRule(anchor: (ctx: PlanContext) => Promise<Target>): OperationRul
 			checks: [{ target, actions: [actionOf("event", "read")] }],
 			response: {
 				kind: "custom",
+				reads: EVENT_FIELDS,
 				transform: (body): Promise<Record<string, unknown>> =>
 					mapData(body, (event) => visibleEvent(ctx, event)),
 			},
@@ -886,13 +900,14 @@ const notificationsRule = make(
 			],
 			response: {
 				kind: "custom",
+				reads: ["work_objects"],
 				transform: (body): Promise<Record<string, unknown>> =>
 					mapData(body, async (item) => {
 						const objects = Array.isArray(item.work_objects) ? item.work_objects : [];
 						const visible = await Promise.all(
 							objects.map((object: unknown) => refVisible(ctx, refOf(object), PARENT_TYPES)),
 						);
-						return visible.every(Boolean) ? item : undefined;
+						return visible.every(Boolean) ? ctx.scrub(item) : undefined;
 					}),
 			},
 		};

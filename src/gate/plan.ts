@@ -10,7 +10,7 @@ import { badRequest, notFound } from "./errors.ts";
 import { type FactsLoader, type Loaded, readOperationOf } from "./facts.ts";
 import { type AsanaObject, gidOf, gidsOf, isObject } from "./objects.ts";
 import { parseOptFields, type Selection } from "./selection.ts";
-import { shapeBody, type ShapeTarget } from "./shape.ts";
+import { referencesIn, shapeBody, type ShapeTarget } from "./shape.ts";
 
 /** An object the request acts on, with its facts resolved. */
 interface Target {
@@ -72,10 +72,16 @@ type ResponsePlan =
 			readonly expect?: readonly Resource[];
 			readonly selection?: Selection;
 	  }
-	/** Custom handling of the whole body. */
+	/**
+	 * Custom handling of the whole body. `reads` names the fields `transform`
+	 * reads off the objects of `data`: they are asked for beside the caller's,
+	 * and each object is cut back to `selection` afterwards.
+	 */
 	| {
 			readonly kind: "custom";
 			readonly transform: (body: Record<string, unknown>) => Promise<Record<string, unknown>>;
+			readonly reads?: readonly string[];
+			readonly selection?: Selection;
 	  };
 
 /** Everything the gate needs to authorize, send and post-process one request. */
@@ -123,6 +129,8 @@ interface PlanInputs {
 		response: ResponsePlan,
 		body: Record<string, unknown>,
 	) => Promise<Record<string, unknown>>;
+	/** An object that is no resource itself (an event), with what it embeds shown as the policy says (supplied by the gate). */
+	readonly scrub: (object: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }
 
 /** The request a classification entry plans for, with what it can ask of the gate. */
@@ -141,7 +149,7 @@ interface PlanContext extends PlanInputs {
 	 * operation, or fields that are not plain paths), the request is sent.
 	 */
 	read(type: Resource, gid: string | undefined): Promise<Read>;
-	/** Loads a target whose type is unknown, trying `types` in order; 404 when none exists or it is hidden. */
+	/** Loads a target whose type is unknown, trying `types` in order; the same 404 when none exists and when it is hidden. */
 	probe(gid: string | undefined, types: readonly Resource[]): Promise<Target>;
 	/** The governed workspace as a target; 404 when `gid` names another workspace. */
 	workspace(gid?: string): Target;
@@ -198,6 +206,15 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 		}
 		return { type, gid, facts: loaded.facts, object: loaded.object };
 	};
+	const probe = async (gid: string | undefined, types: readonly Resource[]): Promise<Target> => {
+		const label = types[0] ?? "object";
+		const named = given(label, gid);
+		const loaded = await loader.probe(named, types);
+		if (loaded === undefined || !isVisible(policy, loaded.facts, loaded.type)) {
+			throw notFound(label, named);
+		}
+		return { type: loaded.type, gid: named, facts: loaded.facts, object: loaded.object };
+	};
 	return {
 		...request,
 		async anchor(type, gid): Promise<Target> {
@@ -216,15 +233,7 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 			const body = { data: target.object };
 			return { target, answer: { body, ...(placement && { placement }) } };
 		},
-		async probe(gid, types): Promise<Target> {
-			const label = types[0] ?? "object";
-			const named = given(label, gid);
-			const loaded = await loader.probe(named, types);
-			if (loaded === undefined) {
-				throw notFound(label, named);
-			}
-			return visible(loaded.type, named, loaded);
-		},
+		probe,
 		workspace(gid): Target {
 			if (gid !== undefined && gid !== policy.workspace) {
 				throw notFound("workspace", gid);
@@ -246,6 +255,9 @@ function createPlanContext(inputs: PlanContextInputs): PlanContext {
 					...(unit !== undefined && { unit }),
 				});
 			}
+			// Like any object a request names, those a `reference` custom field is set to must be visible.
+			const named = await referencesIn(loader, shaped.data);
+			await Promise.all(named.map((reference) => probe(reference.gid, reference.types)));
 			return shaped.data;
 		},
 		violations,
@@ -275,15 +287,7 @@ function dataOf(body: unknown): Record<string, unknown> {
 	return body.data;
 }
 
-/** The `options.fields` of an enveloped body, which Asana reads like `opt_fields`. */
-function optionFieldsOf(body: unknown): string[] {
-	const options =
-		isObject(body) && isObject(body.data) && isObject(body.options) ? body.options : {};
-	const fields: unknown[] = Array.isArray(options.fields) ? options.fields : [];
-	return fields.filter((field): field is string => typeof field === "string");
-}
-
-export { createPlanContext, dataOf, optionFieldsOf };
+export { createPlanContext, dataOf };
 export type {
 	Check,
 	Plan,

@@ -120,6 +120,8 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, and so does the `approval_status` of an approval task, which Asana keeps in step with it (a new approval task in a status other than pending counts as completed, too); its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; every other member needs `update`.
 A custom field defined in place where one is put on a project, a portfolio, a goal or a table is created by that request, so it needs `custom_field:create` in the workspace as well, and the constraints on `custom_field` shape the definition.
 One named by gid must be visible to the policy, like any object a request names, to be put on and to be taken off; so must the table a new record goes into, and the tables a record search filters by.
+So must the objects a create or an update sets a `reference` custom field to: a value that names a hidden object is refused with the 404 of one that names nothing.
+Only its definition tells such a field from any other, so the gate reads the definition of each custom field a request sets, and keeps it for half a minute.
 Taking a local field off again (one outside the workspace's library, as a field defined in place on a project is) deletes it, as live checks showed, so that needs `custom_field:delete` as well; a library field needs only `custom_field_setting:delete`.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
@@ -215,7 +217,9 @@ Limits count per rule and action inside one gate process, over a sliding window,
    A filtered page is refilled from the following pages so that it stays as full as asked for, never fuller.
    A `limit` or `confirm` on a read action applies to lists of that resource as well, once per request.
 9. Every object in a response carries `allowed_actions`, the actions the policy currently allows on it, so an agent can plan before acting; members under `redact` are removed.
-   Nested references to hidden objects (a subtask's `parent`, `dependencies`, a job's `new_task`, …) are removed, and visible ones are redacted as their own place in the policy says.
+   Nested references to hidden objects (a subtask's `parent`, `dependencies`, a job's `new_task`, the project of one of a task's `memberships`, a value of a `reference` custom field, …) are removed however deep they are nested, and visible ones are redacted as their own place in the policy says; so are the objects an event or a notification names.
+   A `reference` custom field that loses a value answers `display_value: null`, because Asana's text for the field names every object it holds.
+   This goes for every object that has a place, its own or that of the object it lives in (a project's status update, the story a notification names); an object that lives at workspace level (a task's `assignee` and `tags`, a record a custom field holds) stays where a visible object names it, without the members the policy redacts.
    An object is answered with the fields the request asked for, without those the gate read beside them to judge it; the objects of a list asked for without `opt_fields` carry their `gid` and name, or what tells apart an object that has no name.
 
 Rule order in the file does not matter.

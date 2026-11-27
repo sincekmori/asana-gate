@@ -70,14 +70,22 @@ describe("a GET by gid", () => {
 			notes: "",
 			memberships: [{ project: { gid: "21", name: "Backend" } }],
 		});
-		// The task is read once; the project its memberships name is checked like any reference.
-		expect(requests(fake)).toStrictEqual(["GET /tasks/101", "GET /projects/21"]);
+		// The task is read once; the project and the section its memberships name are checked like any reference.
+		expect(requests(fake)).toStrictEqual([
+			"GET /tasks/101",
+			"GET /projects/21",
+			"GET /sections/31",
+		]);
 	});
 
 	it("fetches the project's team the whole object lacks", async () => {
 		const { fake, gate } = await setupGate(TEAM_POLICY);
 		await gate.execute({ method: "GET", path: "/tasks/101" });
-		expect(requests(fake)).toStrictEqual(["GET /tasks/101", "GET /projects/21"]);
+		expect(requests(fake)).toStrictEqual([
+			"GET /tasks/101",
+			"GET /projects/21",
+			"GET /sections/31",
+		]);
 	});
 
 	it("fetches a subtask's parent once, to place it and to check the reference", async () => {

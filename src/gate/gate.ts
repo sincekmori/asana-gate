@@ -21,6 +21,7 @@ import {
 	type Facts,
 	isAllowed,
 	isVisible,
+	workspaceFacts,
 } from "../policy/evaluate.ts";
 import { fieldAllowlist } from "../policy/fields.ts";
 import { type Policy, ruleLabel } from "../policy/types.ts";
@@ -36,19 +37,18 @@ import {
 	inAction,
 	type PendingConfirmation,
 } from "./errors.ts";
-import { FactsLoader } from "./facts.ts";
+import { FactsLoader, hasPlace } from "./facts.ts";
 import { type AsanaObject, isObject, resourceOfType, stringOf } from "./objects.ts";
 import {
 	type Check,
 	createPlanContext,
 	dataOf,
-	optionFieldsOf,
 	type Plan,
 	type PlanContext,
 	type ResponsePlan,
 } from "./plan.ts";
 import { fillPath, matchRoute, type RouteMatch } from "./router.ts";
-import { askFor, keep, pick, requestedFields, type Selection } from "./selection.ts";
+import { askFor, pick, requestedFields, type Selection } from "./selection.ts";
 import { redactObject } from "./shape.ts";
 
 /** Options for {@link Gate}. */
@@ -100,6 +100,7 @@ interface Planned {
 
 type ListPlan = Extract<ResponsePlan, { kind: "list" }>;
 type ItemPlan = Extract<ResponsePlan, { kind: "item" }>;
+type CustomPlan = Extract<ResponsePlan, { kind: "custom" }>;
 
 interface ListOptions {
 	/** Fetches the page at `offset`, of at most `limit` items. */
@@ -107,33 +108,29 @@ interface ListOptions {
 	readonly limit?: number;
 }
 
-/** Resource types whose nested references are checked: a visible object may point at hidden ones. */
-const NESTED_TYPES: ReadonlySet<Resource> = new Set([
-	"task",
-	"project",
-	"section",
-	"portfolio",
-	"goal",
-	"team",
-]);
-
-/** How deep nested references are followed (a subtask's ancestors nest five levels). */
-const MAX_NESTING = 6;
-
 /** Marks a nested reference to a hidden object, removed from the response. */
 const HIDDEN = Symbol("hidden");
+
+/** Whether showing `before` as `shown` took a reference out: the member itself, or an item of its list. */
+const lostReference = (before: unknown, shown: unknown): boolean =>
+	shown === HIDDEN ||
+	(Array.isArray(before) && Array.isArray(shown) && shown.length < before.length);
 
 /** Ancestors known with their placement, by gid: none. */
 const NO_ANCESTORS: ReadonlyMap<string, AsanaObject> = new Map();
 
-/** What an object a response shows is judged by, and what the answer keeps of it. */
-interface Judging {
-	/** The object's own facts; `undefined` when none could be derived. */
-	readonly facts: Facts | undefined;
+/** What an answer shows of an object, and what the references nested in it are judged by. */
+interface Shown {
 	/** The ancestors known with their placement, by gid ({@link FactsLoader.placedAncestors}). */
 	readonly ancestors?: ReadonlyMap<string, AsanaObject>;
 	/** The fields kept (the gate asked for more); everything without one. */
-	readonly selection?: Selection;
+	readonly selection?: Selection | undefined;
+}
+
+/** What an object a response shows is judged by, and what the answer keeps of it. */
+interface Judging extends Shown {
+	/** The object's own facts; `undefined` when none could be derived. */
+	readonly facts: Facts | undefined;
 }
 
 const WRITE_METHODS: ReadonlySet<HttpMethod> = new Set(["POST", "PUT", "PATCH"]);
@@ -152,6 +149,14 @@ function parseQuery(query: GateRequest["query"], path: string): Record<string, s
 		}
 	}
 	return result;
+}
+
+/** The `options.fields` of an enveloped body, which Asana reads like `opt_fields`. */
+function optionFieldsOf(body: unknown): string[] {
+	const options =
+		isObject(body) && isObject(body.data) && isObject(body.options) ? body.options : {};
+	const fields: unknown[] = Array.isArray(options.fields) ? options.fields : [];
+	return fields.filter((field): field is string => typeof field === "string");
 }
 
 /** The query, with the `options.fields` of an enveloped body joining its `opt_fields`. */
@@ -184,6 +189,20 @@ function shapedForm(form: FormData, data: unknown): FormData {
 function itemTypeOf(response: ListPlan, item: AsanaObject): Resource | undefined {
 	const [only, ...others] = response.expect ?? [];
 	return resourceOfType(stringOf(item.resource_type)) ?? (others.length === 0 ? only : undefined);
+}
+
+/** A body as its plan transforms it, each object cut back to the fields kept when the gate asked for more. */
+async function transformed(
+	response: CustomPlan,
+	body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+	const answer = await response.transform(body);
+	const { selection } = response;
+	if (selection === undefined || !Array.isArray(answer.data)) {
+		return answer;
+	}
+	const cut = (item: unknown): unknown => (isObject(item) ? pick(item, selection) : item);
+	return { ...answer, data: answer.data.map((item: unknown) => cut(item)) };
 }
 
 function offsetOf(nextPage: unknown): string | undefined {
@@ -265,6 +284,7 @@ class Gate {
 			policy: this.policy,
 			loader: this.loader,
 			postProcess: (response, body) => this.postProcess(response, body),
+			scrub: (object) => this.scrubNested(object),
 			planner: (ctx) => ruleFor(ctx.operationId).plan(ctx),
 		});
 		const plan = await ruleFor(match.operationId).plan(context);
@@ -479,7 +499,7 @@ class Gate {
 				return Promise.resolve(body);
 			}
 			case "custom": {
-				return response.transform(body);
+				return transformed(response, body);
 			}
 			case "item": {
 				return this.processItem(response, body);
@@ -601,9 +621,8 @@ class Gate {
 	/**
 	 * An object as its answer shows it: redacted, its nested references
 	 * scrubbed, cut back to the fields kept, with its `allowed_actions`. The
-	 * members the answer leaves out altogether go first, so nothing is loaded
-	 * to check them; inside a member kept, the cut follows the check, which
-	 * tells a reference by the `resource_type` the gate asked for.
+	 * cut follows the check, which tells a reference by the `resource_type`
+	 * the gate asked for.
 	 */
 	private async decorate(
 		type: Resource,
@@ -613,8 +632,10 @@ class Gate {
 		if (facts === undefined) {
 			return { ...pick(object, selection), allowed_actions: [] };
 		}
-		const kept = this.redacted(type, keep(object, selection), facts);
-		const checked = await this.scrubNested(kept, 0, ancestors);
+		const checked = await this.scrubNested(this.redacted(type, object, facts), {
+			ancestors,
+			selection,
+		});
 		return {
 			...pick(checked, selection),
 			allowed_actions: allowedActions(this.policy, facts, type),
@@ -629,50 +650,59 @@ class Gate {
 
 	/**
 	 * Removes the nested references (a subtask's `parent`, `dependencies`,
-	 * `projects`, …) to objects the policy hides, and redacts the visible ones
-	 * as their own policy says: a visible object never carries a hidden one.
+	 * the project of a membership, a value of a `reference` custom field, …)
+	 * to objects the policy hides, however deep they are nested, and redacts
+	 * the visible ones as their own policy says: a visible object never
+	 * carries a hidden one. An object that loses a reference loses its
+	 * `display_value` too, the text in which Asana names what it holds.
 	 */
-	private async scrubNested(
-		object: AsanaObject,
-		depth: number,
-		ancestors: ReadonlyMap<string, AsanaObject>,
-	): Promise<AsanaObject> {
-		if (depth >= MAX_NESTING) {
-			return object;
-		}
+	private async scrubNested(object: AsanaObject, shown: Shown = {}): Promise<AsanaObject> {
+		const { selection } = shown;
+		// What the answer leaves out is not loaded to be checked; the references a `display_value` names are.
+		const checked = (key: string): boolean =>
+			selection === undefined ||
+			selection.has(key) ||
+			(key === "reference_value" && selection.has("display_value"));
 		const entries = await Promise.all(
 			Object.entries(object).map(async ([key, value]) => {
-				if (!Array.isArray(value)) {
-					const scrubbed = await this.scrubRef(value, depth, ancestors);
-					return [key, scrubbed === HIDDEN ? null : scrubbed] as const;
-				}
-				const items = await Promise.all(
-					value.map((item: unknown) => this.scrubRef(item, depth, ancestors)),
-				);
-				return [key, items.filter((item) => item !== HIDDEN)] as const;
+				const inside = selection?.get(key);
+				const within = { ...shown, selection: inside?.size === 0 ? undefined : inside };
+				return [key, checked(key) ? await this.scrub(value, within) : value] as const;
 			}),
 		);
-		return Object.fromEntries(entries);
+		const lost = entries.some(([key, value]) => lostReference(object[key], value));
+		return Object.fromEntries(
+			entries.map(([key, value]) => [
+				key,
+				value === HIDDEN || (lost && key === "display_value") ? null : value,
+			]),
+		);
 	}
 
-	private async scrubRef(
-		value: unknown,
-		depth: number,
-		ancestors: ReadonlyMap<string, AsanaObject>,
-	): Promise<unknown> {
+	/** A value of a response as an answer shows it; {@link HIDDEN} for a reference to a hidden object. */
+	private async scrub(value: unknown, shown: Shown): Promise<unknown> {
+		if (Array.isArray(value)) {
+			const items = await Promise.all(value.map((item: unknown) => this.scrub(item, shown)));
+			return items.filter((item) => item !== HIDDEN);
+		}
 		if (!isObject(value)) {
 			return value;
 		}
 		const type = resourceOfType(stringOf(value.resource_type));
-		const gid = stringOf(value.gid);
-		if (type === undefined || gid === undefined || !NESTED_TYPES.has(type)) {
-			return value;
+		if (type === undefined || stringOf(value.gid) === undefined) {
+			// No object the policy knows, but it may hold some (a membership, an event's change).
+			return this.scrubNested(value, shown);
 		}
-		const facts = await this.nestedFacts(type, gid, this.placedTask(type, value, ancestors));
+		if (!hasPlace(type)) {
+			// At workspace level an object is part of what names it (a task's assignee, its tags): it stays.
+			const facts = workspaceFacts(this.policy.workspace);
+			return this.scrubNested(this.redacted(type, value, facts), shown);
+		}
+		const facts = await this.nestedFacts(type, value, shown.ancestors ?? NO_ANCESTORS);
 		if (facts === undefined || !isVisible(this.policy, facts, type)) {
 			return HIDDEN;
 		}
-		return this.scrubNested(this.redacted(type, value, facts), depth + 1, ancestors);
+		return this.scrubNested(this.redacted(type, value, facts), shown);
 	}
 
 	/**
@@ -682,26 +712,31 @@ class Gate {
 	 * embeds with it (the loader's fetch carries the ancestors' placement).
 	 */
 	private placedTask(
-		type: Resource,
 		value: AsanaObject,
 		ancestors: ReadonlyMap<string, AsanaObject>,
 	): AsanaObject | undefined {
-		if (type !== "task" || !this.placementDecides) {
+		if (!this.placementDecides) {
 			return undefined;
 		}
 		return this.loader.carriesPlacement(value) ? value : ancestors.get(stringOf(value.gid) ?? "");
 	}
 
-	/** The facts of a nested object: from `placed`, a task carrying its placement; otherwise loaded. */
+	/**
+	 * The facts of a nested object that has a place: from the object itself
+	 * when the answer carries what they derive from (a task's placement, the
+	 * task a story is on), otherwise loaded.
+	 */
 	private async nestedFacts(
 		type: Resource,
-		gid: string,
-		placed: AsanaObject | undefined,
+		value: AsanaObject,
+		ancestors: ReadonlyMap<string, AsanaObject>,
 	): Promise<Facts | undefined> {
-		if (placed !== undefined) {
-			return this.loader.fromObject(type, placed);
+		const own = this.loader.carries(type, value) ? value : undefined;
+		const carried = type === "task" ? this.placedTask(value, ancestors) : own;
+		if (carried !== undefined) {
+			return this.loader.fromObject(type, carried);
 		}
-		const loaded = await this.loader.load(type, gid);
+		const loaded = await this.loader.load(type, stringOf(value.gid) ?? "");
 		return loaded?.facts;
 	}
 }

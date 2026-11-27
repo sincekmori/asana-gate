@@ -113,19 +113,6 @@ function cut(value: unknown, selection: Selection): unknown {
 }
 
 /**
- * An object without the members `selection` leaves out altogether; all of
- * it without a selection. What is left is what needs checking, before
- * {@link pick} cuts inside the members kept.
- */
-function keep(object: AsanaObject, selection: Selection | undefined): AsanaObject {
-	return selection === undefined
-		? object
-		: Object.fromEntries(
-				Object.entries(object).filter(([name]) => name === "gid" || selection.has(name)),
-			);
-}
-
-/**
  * An object cut back to the members `selection` names (and its `gid`); all
  * of it without a selection. A member selected alone is kept as it is:
  * after {@link widenSelection}, which never selects inside one, that is how
@@ -138,20 +125,29 @@ function pick(object: AsanaObject, selection: Selection | undefined): AsanaObjec
 }
 
 /**
- * `opt_fields` with `resource_type` selected inside every member they reach
- * into. Asana answers a member with a selection inside it with only its
- * `gid` and that selection (`parent.name` gives `{ gid, name }`, and
- * `parent` next to `parent.memberships.project` gives `{ gid, memberships }`;
- * observed live), so without it a nested reference cannot be told from any
- * other object, and the gate could not check it. Inside a non-resource
- * object (a membership) the member is unknown, and Asana ignores it.
+ * `opt_fields` with what checking the response takes. `resource_type` is
+ * selected inside every member they reach into: Asana answers a member with
+ * a selection inside it with only its `gid` and that selection
+ * (`parent.name` gives `{ gid, name }`, and `parent` next to
+ * `parent.memberships.project` gives `{ gid, memberships }`; observed live),
+ * so without it a nested reference cannot be told from any other object,
+ * and the gate could not check it. Inside a non-resource object (a
+ * membership) the member is unknown, and Asana ignores it. And beside a
+ * `display_value`, the text in which Asana names the objects a `reference`
+ * custom field holds, their `reference_value` is selected, or the text
+ * could name an object the policy hides.
  */
-function withReferenceTypes(fields: readonly string[]): string[] {
-	const types = fields.flatMap((field) => {
+function checkable(fields: readonly string[]): string[] {
+	const added = fields.flatMap((field) => {
 		const names = field.split(".");
-		return names.slice(1).map((_, depth) => `${names.slice(0, depth + 1).join(".")}.resource_type`);
+		const types = names
+			.slice(1)
+			.map((_, depth) => `${names.slice(0, depth + 1).join(".")}.resource_type`);
+		return names.at(-1) === "display_value"
+			? [...types, [...names.slice(0, -1), "reference_value"].join(".")]
+			: types;
 	});
-	return [...new Set([...fields, ...types])];
+	return [...new Set([...fields, ...added])];
 }
 
 /** Per resource, the fields a list item carries when the caller asks for none. */
@@ -205,6 +201,22 @@ function keptFields(
 	return requested ?? DEFAULT_LIST_FIELDS[response.type] ?? ["name"];
 }
 
+/** What processing a response reads off its objects, besides the fields kept. */
+function neededFields(
+	response: Exclude<ResponsePlan, { kind: "raw" }>,
+	requiredFields: RequiredFields,
+): readonly string[] {
+	if (response.kind === "custom") {
+		return response.reads ?? [];
+	}
+	if (response.facts !== undefined) {
+		return [];
+	}
+	// A mixed list carries what the facts of any type it expects need.
+	const types = response.type === "mixed" ? (response.expect ?? []) : [response.type];
+	return types.flatMap((type) => requiredFields(type));
+}
+
 /** How to ask for a response, and how to process it. */
 interface Asked {
 	/** The `opt_fields` to send; `undefined` leaves Asana's default alone. */
@@ -232,29 +244,25 @@ function askFor(
 	if (kept === undefined) {
 		return { optFields: undefined, response };
 	}
-	if (response.kind === "raw" || response.kind === "custom") {
-		return { optFields: withReferenceTypes(kept), response };
+	if (response.kind === "raw" || (response.kind === "custom" && response.reads === undefined)) {
+		return { optFields: checkable(kept), response };
 	}
-	// A mixed list carries what the facts of any type it expects need.
-	const types = response.type === "mixed" ? (response.expect ?? []) : [response.type];
-	const needed = response.facts === undefined ? types.flatMap((type) => requiredFields(type)) : [];
 	const selection = parseSelection(kept);
 	return {
 		// Every nested reference the response carries must name its type, or it could not be checked.
-		optFields: withReferenceTypes([...kept, ...needed]),
+		optFields: checkable([...kept, ...neededFields(response, requiredFields)]),
 		response: selection === undefined ? response : { ...response, selection },
 	};
 }
 
 export {
 	askFor,
+	checkable,
 	fieldsOf,
-	keep,
 	parseOptFields,
 	parseSelection,
 	pick,
 	requestedFields,
 	widenSelection,
-	withReferenceTypes,
 };
 export type { RequiredFields, Selection };

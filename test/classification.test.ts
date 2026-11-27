@@ -86,6 +86,7 @@ async function undeclaredParamReads(): Promise<string[]> {
 				policy,
 				loader,
 				postProcess: (_response, body) => Promise.resolve(body),
+				scrub: (object) => Promise.resolve(object),
 				planner: (ctx) => ruleFor(ctx.operationId).plan(ctx),
 			});
 			// Most plans end in a refusal (no body, no query); only the reads matter.

@@ -54,7 +54,8 @@ describe("constraints in the gate", () => {
 		expect(fake.store.get("task", gid)?.name).toBe("[AI] write docs");
 		expect(fake.store.get("task", gid)?.tags).toStrictEqual([{ gid: "41", resource_type: "tag" }]);
 		// The option name in the policy is sent as the option gid Asana expects.
-		expect(fake.calls.at(-1)?.body).toMatchObject({ custom_fields: { "61": "71" } });
+		const sent = fake.calls.find((call) => call.method === "POST");
+		expect(sent?.body).toMatchObject({ custom_fields: { "61": "71" } });
 	});
 
 	it("takes the enum option by the gid Asana takes, naming it where the name is sent", async () => {

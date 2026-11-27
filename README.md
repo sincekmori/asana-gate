@@ -192,6 +192,8 @@ A rule takes part only for the actions it names, so a scope is made read-only wi
 Some verbs are implied by the request body: updating a task's `completed` needs `task:complete`, and so does the `approval_status` of an approval task, which Asana keeps in step with it (a new approval task in a status other than pending counts as completed, too); its `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; every other member needs `update`.
 A custom field defined in place where one is put on a project, a portfolio, a goal or a table is created by that request, so it needs `custom_field:create` in the workspace as well, and the constraints on `custom_field` shape the definition.
 One named by gid must be visible to the policy, like any object a request names, to be put on and to be taken off; so must the table a new record goes into, and the tables a record search filters by.
+So must the objects a create or an update sets a `reference` custom field to: a value that names a hidden object is refused with the 404 of one that names nothing.
+Only its definition tells such a field from any other, so the gate reads the definition of each custom field a request sets, and keeps it for half a minute.
 Taking a local field off again (one outside the workspace's library, as a field defined in place on a project is) deletes it, as live checks showed, so that needs `custom_field:delete` as well; a library field needs only `custom_field_setting:delete`.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
@@ -287,7 +289,9 @@ Limits count per rule and action inside one gate process, over a sliding window,
    A filtered page is refilled from the following pages so that it stays as full as asked for, never fuller.
    A `limit` or `confirm` on a read action applies to lists of that resource as well, once per request.
 9. Every object in a response carries `allowed_actions`, the actions the policy currently allows on it, so an agent can plan before acting; members under `redact` are removed.
-   Nested references to hidden objects (a subtask's `parent`, `dependencies`, a job's `new_task`, …) are removed, and visible ones are redacted as their own place in the policy says.
+   Nested references to hidden objects (a subtask's `parent`, `dependencies`, a job's `new_task`, the project of one of a task's `memberships`, a value of a `reference` custom field, …) are removed however deep they are nested, and visible ones are redacted as their own place in the policy says; so are the objects an event or a notification names.
+   A `reference` custom field that loses a value answers `display_value: null`, because Asana's text for the field names every object it holds.
+   This goes for every object that has a place, its own or that of the object it lives in (a project's status update, the story a notification names); an object that lives at workspace level (a task's `assignee` and `tags`, a record a custom field holds) stays where a visible object names it, without the members the policy redacts.
    An object is answered with the fields the request asked for, without those the gate read beside them to judge it; the objects of a list asked for without `opt_fields` carry their `gid` and name, or what tells apart an object that has no name.
 
 Rule order in the file does not matter.
@@ -562,6 +566,11 @@ Some behaviors worth knowing:
   The gate therefore also selects `resource_type` inside every member its fields reach into, to recognize and check nested references, and cuts every object back to the caller's fields before answering.
   In a list or in the answer to a write, a member the caller selects alone and the gate reads inside (`parent` in a list of tasks) keeps what the gate selected inside it, because selecting inside a member changes what Asana answers for it; a `GET` by gid reads what the gate needs beside the request instead.
 - Nested selections reach into referenced objects, including on typeahead results: `memberships.project.team` gives a task's team with the task.
+  They reach any member of such an object (`memberships.project.notes`, and `resource.notes` on an event), so the gate checks and redacts a reference wherever an answer nests it.
+- A `reference` custom field takes one gid or a list of them, of objects of the types its `input_restrictions` name (Asana answers that member for such a field only), and refuses a gid that names nothing with a 400 (`reference_value: [0]: Unknown object: …`), and an object of another type with a different one.
+  It answers each object with its `gid`, `resource_type` and `name` and no other member, whatever is selected inside `reference_value`, and names them all in `display_value` (`null` for none).
+- A project holds its latest status update twice: compact in `current_status_update`, and whole, its text included, in the deprecated `current_status`, under the type `project_status` and the same gid.
+  A notification names its story as `{ gid, resource_type }`; `story.text` is honoured there and `story.target` is not, so the gate reads the story to learn what it is on.
 - Custom fields, custom types, time periods, time tracking categories and out-of-office entries carry no `workspace` member, so the gate places them in the governed workspace; with a token that belongs to several workspaces, rules at workspace level also govern such objects of the other workspaces when an agent names their gids. `PUT /enum_options/{gid}` is checked at workspace level only (Asana offers no way to read an enum option).
 
 ## Library

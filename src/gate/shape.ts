@@ -12,7 +12,7 @@ import { constraintsFor, labelOf } from "../policy/effective.ts";
 import type { Facts } from "../policy/evaluate.ts";
 import type { Policy } from "../policy/types.ts";
 import type { FactsLoader } from "./facts.ts";
-import { isObject } from "./objects.ts";
+import { gidsOf, isObject } from "./objects.ts";
 
 type Body = Record<string, unknown>;
 
@@ -124,6 +124,40 @@ async function shapeBody(
 	return { data, problems };
 }
 
+/** An object a request body names, with the types it may be of. */
+interface Named {
+	readonly gid: string;
+	readonly types: readonly Resource[];
+}
+
+/** What a custom field value could name: every text or number in it, alone or in a list, and the `gid` of an object. */
+const namedBy = (value: unknown): string[] =>
+	(Array.isArray(value) ? value : [value]).flatMap((item: unknown) =>
+		typeof item === "number" ? [String(item)] : gidsOf(item),
+	);
+
+/**
+ * The objects the `reference` custom fields of a body are set to, each with
+ * the types its field takes. Only its definition tells such a field from any
+ * other, so every field whose value could name something is looked up; and
+ * whatever the value of a `reference` field gives is taken for a name,
+ * rather than what the gate expects a gid to look like.
+ */
+async function referencesIn(
+	loader: Pick<FactsLoader, "referenceTypes">,
+	body: Readonly<Body>,
+): Promise<Named[]> {
+	const fields = isObject(body.custom_fields) ? Object.entries(body.custom_fields) : [];
+	const named = await Promise.all(
+		fields.map(async ([field, value]) => {
+			const gids = namedBy(value);
+			const types = gids.length > 0 ? await loader.referenceTypes(field) : undefined;
+			return types === undefined ? [] : gids.map((gid) => ({ gid, types }));
+		}),
+	);
+	return named.flat();
+}
+
 /** Removes the members the policy redacts for an object of `resource`. */
 function redactObject(scope: Scope, resource: Resource, object: Body): Body {
 	const redact = constraintsFor(scope.policy, scope.facts).redact.get(resource);
@@ -133,5 +167,5 @@ function redactObject(scope: Scope, resource: Resource, object: Body): Body {
 	return Object.fromEntries(Object.entries(object).filter(([key]) => !redact.has(key)));
 }
 
-export { redactObject, shapeBody };
+export { redactObject, referencesIn, shapeBody };
 export type { Scope, Shaped, ShapeTarget };

@@ -33,11 +33,11 @@ import {
 import { PortfolioIndex } from "./portfolio-index.ts";
 import { isPathSegment } from "./router.ts";
 import {
+	checkable,
 	fieldsOf,
 	parseSelection,
 	type Selection,
 	widenSelection,
-	withReferenceTypes,
 } from "./selection.ts";
 
 /** How deep the parent chain of a subtask is followed (Asana nests subtasks up to 5 levels). */
@@ -251,6 +251,26 @@ const CONTAINER_MEMBERS: Partial<
 	project_membership: { members: ["parent", "project"], types: ["project"] },
 };
 
+/** The resources whose objects have a place of their own: {@link FactsLoader.fromObject} places each by itself. */
+const PLACED: ReadonlySet<Resource> = new Set([
+	"task",
+	"project",
+	"section",
+	"portfolio",
+	"team",
+	"goal",
+]);
+
+/**
+ * Whether objects of `type` have a place, their own or that of the object
+ * they live inside, where a policy may hide them or redact their members
+ * while it shows what names them. Every other object lives at workspace
+ * level.
+ */
+function hasPlace(type: Resource): boolean {
+	return PLACED.has(type) || Object.hasOwn(CONTAINER_MEMBERS, type);
+}
+
 /** Options for {@link FactsLoader}. */
 interface FactsLoaderOptions {
 	client: AsanaClient;
@@ -408,6 +428,8 @@ class FactsLoader {
 	/** The `opt_fields` a task's facts need under this policy (see taskFields). */
 	private readonly taskFields: readonly string[];
 	private readonly members = new Map<Resource, ReadonlySet<string>>();
+	/** Per custom field, what {@link referenceTypes} found (`null`: no `reference` field). */
+	private readonly references: TtlCache<readonly Resource[] | null>;
 
 	public constructor(options: FactsLoaderOptions) {
 		this.client = options.client;
@@ -416,6 +438,7 @@ class FactsLoader {
 		this.taskFields = taskFields(this.needs);
 		this.logger = options.logger ?? silentLogger;
 		this.objects = new TtlCache(options.objectTtlMs ?? 30_000);
+		this.references = new TtlCache(options.objectTtlMs ?? 30_000);
 		this.projectTtlMs = options.projectTtlMs ?? 300_000;
 		this.needsTaskChain = needsTaskChain(this.policy);
 		this.portfolios = new PortfolioIndex({
@@ -465,6 +488,47 @@ class FactsLoader {
 	}
 
 	/**
+	 * The types of objects a `reference` custom field takes as its values
+	 * (`input_restrictions`, which Asana answers for such a field only);
+	 * `undefined` for a field of another type, or one Asana does not show.
+	 * A type the policy does not model is left out, so a value of that type
+	 * names nothing the gate could judge.
+	 */
+	public async referenceTypes(field: string): Promise<readonly Resource[] | undefined> {
+		const cached = this.references.get(field);
+		if (cached !== undefined) {
+			return cached ?? undefined;
+		}
+		// Requests that set one field at the same time (the actions of a batch) share the lookup.
+		const definition = isPathSegment(field)
+			? await this.shared(`reference:${field}#`, () => this.fetchDefinition(field))
+			: undefined;
+		const taken: unknown = definition?.input_restrictions;
+		const types =
+			definition?.resource_subtype === "reference"
+				? (Array.isArray(taken) ? taken : [])
+						.map((type: unknown) => resourceOfType(stringOf(type)))
+						.filter((type) => type !== undefined)
+				: null;
+		this.references.set(field, types);
+		return types ?? undefined;
+	}
+
+	/** What tells a `reference` custom field and the types it takes; `undefined` for a field Asana does not show. */
+	private async fetchDefinition(field: string): Promise<AsanaObject | undefined> {
+		try {
+			return await this.client.get<AsanaObject>(`/custom_fields/${encodeURIComponent(field)}`, {
+				opt_fields: ["resource_subtype", "input_restrictions"],
+			});
+		} catch (error) {
+			if (isAbsent(error)) {
+				return undefined;
+			}
+			throw error;
+		}
+	}
+
+	/**
 	 * Reads an object afresh to answer a request for it and to judge it, in
 	 * one request: the fields sent are the caller's `selection` together with
 	 * what the facts need (none, for the whole object, when the caller names
@@ -485,7 +549,7 @@ class FactsLoader {
 		const complete = widened?.complete ?? true;
 		const key = `${type}:${gid}`;
 		const fetch = { type, gid, key, generation: this.generations.get(key) ?? 0 };
-		const sent = widened === undefined ? undefined : withReferenceTypes(fieldsOf(widened.sent));
+		const sent = widened === undefined ? undefined : checkable(fieldsOf(widened.sent));
 		const derivable = (object: AsanaObject): boolean => complete && this.carries(type, object);
 		// Reads of one object with the same fields under way together (a batch naming it twice)
 		// share one request: it was still sent after each of them arrived.
@@ -715,6 +779,9 @@ class FactsLoader {
 		}
 		if (type === "portfolio") {
 			this.portfolios.invalidateFor(gid);
+		}
+		if (type === "custom_field") {
+			this.references.delete(gid);
 		}
 	}
 
@@ -991,6 +1058,7 @@ class FactsLoader {
 
 export {
 	FactsLoader,
+	hasPlace,
 	membershipsOf,
 	PARENT_TYPES,
 	readOperationOf,
