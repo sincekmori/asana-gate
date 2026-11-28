@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 import { isResource, type Resource } from "../catalog/resources.ts";
 import { FactsLoader, type Loaded } from "../gate/facts.ts";
 import { stringOf } from "../gate/objects.ts";
-import { constraintJson, constraintsFor, labelOf } from "../policy/effective.ts";
+import { constraintJson, constraintsFor } from "../policy/effective.ts";
 import {
 	type Branch,
 	decide,
@@ -70,14 +70,11 @@ function describeBranch(branch: Branch): string {
 function printConstraints(policy: Policy, loaded: Loaded): void {
 	const effective = constraintsFor(policy, loaded.facts);
 	const lines: string[] = [];
-	const label = (key: string): string => labelOf(effective, key);
 	for (const [key, requirements] of effective.require.get(loaded.type) ?? []) {
-		lines.push(
-			`  require ${label(key)}: ${requirements.map((r) => constraintJson(r)).join(" and ")}`,
-		);
+		lines.push(`  require ${key}: ${requirements.map((r) => constraintJson(r)).join(" and ")}`);
 	}
 	for (const [key, application] of effective.apply.get(loaded.type) ?? []) {
-		lines.push(`  apply   ${label(key)}: ${constraintJson(application)}`);
+		lines.push(`  apply   ${key}: ${constraintJson(application)}`);
 	}
 	const forbid = effective.forbid.get(loaded.type);
 	if (forbid !== undefined && forbid.size > 0) {

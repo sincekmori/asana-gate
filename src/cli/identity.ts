@@ -7,7 +7,7 @@ import { text as readStream } from "node:stream/consumers";
 
 import { AsanaClient } from "../asana/client.ts";
 import { AsanaApiError } from "../asana/errors.ts";
-import { AsanaNameResolver } from "../gate/resolver.ts";
+import { whoAmI } from "../gate/identity.ts";
 import type { Me } from "../policy/types.ts";
 import { UsageError } from "./context.ts";
 import { tokenText } from "./token.ts";
@@ -22,8 +22,7 @@ function describeUser(me: Me): string {
 /** Who a token belongs to, as Asana says. */
 async function identify(token: string): Promise<string> {
 	try {
-		const me = await new AsanaNameResolver(new AsanaClient({ token })).me();
-		return describeUser(me);
+		return describeUser(await whoAmI(new AsanaClient({ token })));
 	} catch (error) {
 		if (error instanceof AsanaApiError && error.status === 401) {
 			throw new UsageError("Asana rejected the token (401 Unauthorized)");

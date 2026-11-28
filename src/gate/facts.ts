@@ -18,7 +18,6 @@ import {
 import { isGid } from "../policy/schema.ts";
 import { needsTaskChain, portfoliosNamed } from "../policy/scope.ts";
 import type { CompiledWhere, Policy } from "../policy/types.ts";
-import { TtlCache } from "./cache.ts";
 import {
 	type AsanaObject,
 	gidOf,
@@ -26,7 +25,6 @@ import {
 	isObject,
 	type Ref,
 	refOf,
-	refsOf,
 	resourceOfType,
 	stringOf,
 } from "./objects.ts";
@@ -53,14 +51,19 @@ const ANCESTOR_PREFIXES: readonly string[] = Array.from({ length: MAX_PARENT_DEP
  * reader, so a fact no rule names is neither asked of Asana nor derived.
  * `asana-gate explain` shows them all.
  */
+/** The members of a custom field that hold objects, which a rule names by gid. */
+const HELD_OBJECTS = [
+	"enum_value",
+	"multi_enum_values",
+	"people_value",
+	"reference_value",
+] as const;
+
 /** The members of a task's custom fields that {@link customFieldValues} reads. */
 const CUSTOM_FIELD_MEMBERS: readonly string[] = [
 	"custom_fields.gid",
 	"custom_fields.display_value",
-	"custom_fields.enum_value.gid",
-	"custom_fields.enum_value.name",
-	"custom_fields.multi_enum_values.gid",
-	"custom_fields.multi_enum_values.name",
+	...HELD_OBJECTS.map((member) => `custom_fields.${member}.gid`),
 ];
 
 /** A fact of a task a rule's `where` may name, and the members it is derived from. */
@@ -271,17 +274,44 @@ function hasPlace(type: Resource): boolean {
 	return PLACED.has(type) || Object.hasOwn(CONTAINER_MEMBERS, type);
 }
 
+/**
+ * The facts of a project or a section that `facts` place something in: one
+ * of their branches names it, with the team and the portfolios it is in.
+ * Whoever was judged by `facts` (a task, or what lives on one) names such an
+ * object without a request for it, since these are the facts a load of it
+ * would derive, its name taken from the reference. `undefined` when no
+ * branch names it, or the reference carries no name to match a rule's
+ * `name` by.
+ */
+function placedBy(facts: Facts, type: Resource, ref: AsanaObject): Facts | undefined {
+	const gid = stringOf(ref.gid);
+	const name = stringOf(ref.name);
+	const branch =
+		type === "project" || type === "section"
+			? facts.branches.find((candidate) => candidate[type] === gid)
+			: undefined;
+	if (branch?.project === undefined || name === undefined) {
+		return undefined;
+	}
+	const place: Branch = {
+		...(branch.team !== undefined && { team: branch.team }),
+		portfolios: branch.portfolios,
+		project: branch.project,
+		...(type === "section" && { section: gid }),
+		taskChain: [],
+		unhomed: false,
+	};
+	return { workspace: facts.workspace, branches: [place], state: { name } };
+}
+
+/** The members of a custom field's definition that tell a `reference` field and the types it takes. */
+const DEFINITION: readonly string[] = ["resource_subtype", "input_restrictions"];
+
 /** Options for {@link FactsLoader}. */
 interface FactsLoaderOptions {
 	client: AsanaClient;
 	policy: Policy;
 	logger?: Logger;
-	/** How long a fetched object is reused, in milliseconds. */
-	objectTtlMs?: number;
-	/** How long a project (whose team rarely changes) is reused, in milliseconds. */
-	projectTtlMs?: number;
-	/** How long the portfolio contents snapshot is reused, in milliseconds. */
-	portfolioTtlMs?: number;
 	/** Derive every fact of a task, not only those the policy reads (for `explain`). */
 	allFacts?: boolean;
 }
@@ -306,14 +336,6 @@ interface Membership {
 interface Placement {
 	readonly chain: readonly string[];
 	readonly memberships: readonly Membership[];
-}
-
-/** One object fetch: the object, its cache key, and the generation it was asked for under. */
-interface Fetch {
-	readonly type: Resource;
-	readonly gid: string;
-	readonly key: string;
-	readonly generation: number;
 }
 
 /** The parent a task embeds together with its placement (`parent.memberships.*`), if any. */
@@ -341,25 +363,6 @@ function membershipsOf(task: Readonly<AsanaObject>): Membership[] {
 		.filter((m): m is Membership => m.project !== undefined);
 }
 
-/**
- * Whether a cached task's facts derive from the object `gid`: an ancestor in
- * the parent chain it embeds, or a project its memberships (or an
- * ancestor's) name, whose team they carry.
- */
-function derivesFrom(task: AsanaObject | null, gid: string): boolean {
-	let node: unknown = task;
-	for (let depth = 0; depth <= MAX_PARENT_DEPTH && isObject(node); depth += 1) {
-		if (depth > 0 && gidOf(node) === gid) {
-			return true;
-		}
-		if (membershipsOf(node).some((membership) => membership.project === gid)) {
-			return true;
-		}
-		node = node.parent;
-	}
-	return false;
-}
-
 function customFieldValues(value: unknown): ReadonlyMap<string, ReadonlySet<string>> | undefined {
 	if (!Array.isArray(value)) {
 		return undefined;
@@ -368,21 +371,11 @@ function customFieldValues(value: unknown): ReadonlyMap<string, ReadonlySet<stri
 	for (const field of value.filter(
 		(f): f is AsanaObject => isObject(f) && typeof f.gid === "string",
 	)) {
-		const values = new Set<string>();
+		// The objects a field holds are told by gid; only a field that holds none is told by its text.
+		const held = HELD_OBJECTS.flatMap((member) => gidsOf(field[member]));
 		const display = stringOf(field.display_value);
-		if (display !== undefined) {
-			values.add(display);
-		}
-		const options = [refOf(field.enum_value), ...refsOf(field.multi_enum_values)];
-		for (const option of options) {
-			if (option !== undefined) {
-				values.add(option.gid);
-				if (option.name !== undefined) {
-					values.add(option.name);
-				}
-			}
-		}
-		map.set(stringOf(field.gid) ?? "", values);
+		const values = held.length > 0 || display === undefined ? held : [display];
+		map.set(stringOf(field.gid) ?? "", new Set(values));
 	}
 	return map;
 }
@@ -406,30 +399,25 @@ function taskState(task: Readonly<AsanaObject>): ObjectState {
 
 /**
  * Derives the facts (hierarchical placement and cross-cutting attributes) of
- * Asana objects, fetching from the API as needed and caching the results.
+ * Asana objects for one request, from what Asana says while it runs. A
+ * loader is made for a request and gone with it: it asks Asana for a thing
+ * once, however many times the request needs it, and nothing it learns
+ * reaches another request.
  */
 class FactsLoader {
 	private readonly client: AsanaClient;
 	private readonly policy: Policy;
 	private readonly logger: Logger;
-	private readonly objects: TtlCache<AsanaObject | null>;
-	private readonly projectTtlMs: number;
-	/** Fetches under way (per object and generation, and per fields for reads), so concurrent requests share a call. */
-	private readonly inflight = new Map<string, Promise<AsanaObject | undefined>>();
-	/**
-	 * Per object, bumped by every invalidation: a fetch that started before a
-	 * write is not cached after it, and later lookups do not join it.
-	 */
-	private readonly generations = new Map<string, number>();
-	private readonly portfolios: PortfolioIndex;
+	/** What the request has asked of Asana, by what it asked for; those who ask again share the answer. */
+	private readonly asked = new Map<string, Promise<unknown>>();
+	/** The portfolios the policy names. */
+	private readonly roots: ReadonlySet<string>;
 	/** Whether a rule names a task or a subtree, so a task's ancestors must be known. */
 	private readonly needsTaskChain: boolean;
 	private readonly needs: TaskNeeds;
 	/** The `opt_fields` a task's facts need under this policy (see taskFields). */
 	private readonly taskFields: readonly string[];
 	private readonly members = new Map<Resource, ReadonlySet<string>>();
-	/** Per custom field, what {@link referenceTypes} found (`null`: no `reference` field). */
-	private readonly references: TtlCache<readonly Resource[] | null>;
 
 	public constructor(options: FactsLoaderOptions) {
 		this.client = options.client;
@@ -437,16 +425,28 @@ class FactsLoader {
 		this.needs = options.allFacts === true ? EVERY_TASK_FACT : taskNeedsOf(options.policy);
 		this.taskFields = taskFields(this.needs);
 		this.logger = options.logger ?? silentLogger;
-		this.objects = new TtlCache(options.objectTtlMs ?? 30_000);
-		this.references = new TtlCache(options.objectTtlMs ?? 30_000);
-		this.projectTtlMs = options.projectTtlMs ?? 300_000;
 		this.needsTaskChain = needsTaskChain(this.policy);
-		this.portfolios = new PortfolioIndex({
-			client: this.client,
-			roots: portfoliosNamed(this.policy),
-			ttlMs: options.portfolioTtlMs ?? 300_000,
-			logger: this.logger,
-		});
+		this.roots = portfoliosNamed(this.policy);
+	}
+
+	/**
+	 * Forgets what the request has learned. It does once it has written:
+	 * Asana may say otherwise from then on, of the object written and of all
+	 * that takes its place from it.
+	 */
+	public forget(): void {
+		this.asked.clear();
+	}
+
+	/** The answer to `ask`, which goes to Asana once: whoever asks for `key` again shares it. */
+	private once<T>(key: string, ask: () => Promise<T>): Promise<T> {
+		const answered = this.asked.get(key) as Promise<T> | undefined;
+		if (answered !== undefined) {
+			return answered;
+		}
+		const answer = ask();
+		this.asked.set(key, answer);
+		return answer;
 	}
 
 	/**
@@ -495,37 +495,16 @@ class FactsLoader {
 	 * names nothing the gate could judge.
 	 */
 	public async referenceTypes(field: string): Promise<readonly Resource[] | undefined> {
-		const cached = this.references.get(field);
-		if (cached !== undefined) {
-			return cached ?? undefined;
+		const definition = await this.once(`custom_field:${field}?${DEFINITION.join(",")}`, () =>
+			this.fetch("custom_field", field, DEFINITION),
+		);
+		if (definition?.resource_subtype !== "reference") {
+			return undefined;
 		}
-		// Requests that set one field at the same time (the actions of a batch) share the lookup.
-		const definition = isPathSegment(field)
-			? await this.shared(`reference:${field}#`, () => this.fetchDefinition(field))
-			: undefined;
-		const taken: unknown = definition?.input_restrictions;
-		const types =
-			definition?.resource_subtype === "reference"
-				? (Array.isArray(taken) ? taken : [])
-						.map((type: unknown) => resourceOfType(stringOf(type)))
-						.filter((type) => type !== undefined)
-				: null;
-		this.references.set(field, types);
-		return types ?? undefined;
-	}
-
-	/** What tells a `reference` custom field and the types it takes; `undefined` for a field Asana does not show. */
-	private async fetchDefinition(field: string): Promise<AsanaObject | undefined> {
-		try {
-			return await this.client.get<AsanaObject>(`/custom_fields/${encodeURIComponent(field)}`, {
-				opt_fields: ["resource_subtype", "input_restrictions"],
-			});
-		} catch (error) {
-			if (isAbsent(error)) {
-				return undefined;
-			}
-			throw error;
-		}
+		const taken: unknown = definition.input_restrictions;
+		return (Array.isArray(taken) ? taken : [])
+			.map((type: unknown) => resourceOfType(stringOf(type)))
+			.filter((type) => type !== undefined);
 	}
 
 	/**
@@ -547,14 +526,11 @@ class FactsLoader {
 		const needed = parseSelection(["name", ...this.requiredFields(type)]) ?? new Map();
 		const widened = selection === undefined ? undefined : widenSelection(selection, needed);
 		const complete = widened?.complete ?? true;
-		const key = `${type}:${gid}`;
-		const fetch = { type, gid, key, generation: this.generations.get(key) ?? 0 };
 		const sent = widened === undefined ? undefined : checkable(fieldsOf(widened.sent));
-		const derivable = (object: AsanaObject): boolean => complete && this.carries(type, object);
-		// Reads of one object with the same fields under way together (a batch naming it twice)
-		// share one request: it was still sent after each of them arrived.
-		const flight = `${key}#${fetch.generation}?${sent?.join(",") ?? ""}`;
-		const read = this.shared(flight, () => this.fetchFresh(fetch, sent, derivable));
+		// Reads of one object with the same fields (a batch naming it twice) share one request.
+		const read = this.once(`${type}:${gid}?${sent?.join(",") ?? ""}`, () =>
+			this.fetch(type, gid, sent),
+		);
 		if (!complete) {
 			// The response cannot carry what the facts need: they are loaded alongside.
 			return this.besides(type, gid, read);
@@ -563,7 +539,7 @@ class FactsLoader {
 		if (object === undefined) {
 			return undefined;
 		}
-		if (derivable(object)) {
+		if (this.carries(type, object)) {
 			const facts = await this.fromObject(type, object);
 			return facts === undefined ? undefined : { type, object, facts };
 		}
@@ -761,131 +737,49 @@ class FactsLoader {
 		);
 	}
 
-	/**
-	 * Forgets a cached object after it was modified. A task's cached
-	 * descendants go too: they carry its placement in their ancestor chain.
-	 */
-	public invalidate(type: Resource, gid: string): void {
-		const key = `${type}:${gid}`;
-		this.objects.delete(key);
-		this.bump(key);
-		if (type === "task" || type === "project") {
-			const dependents = this.objects.deleteWhere(
-				(cachedKey, object) => cachedKey.startsWith("task:") && derivesFrom(object, gid),
-			);
-			for (const dependent of dependents) {
-				this.bump(dependent);
-			}
-		}
-		if (type === "portfolio") {
-			this.portfolios.invalidateFor(gid);
-		}
-		if (type === "custom_field") {
-			this.references.delete(gid);
-		}
-	}
-
-	/**
-	 * Records a write to `key`, so that a fetch of it under way does not cache
-	 * what it brings back; with none under way there is nothing to record (the
-	 * cached copy is gone), which keeps the record as small as the fetches.
-	 */
-	private bump(key: string): void {
-		if (this.fetching(key)) {
-			this.generations.set(key, (this.generations.get(key) ?? 0) + 1);
-		}
-	}
-
-	private fetching(key: string): boolean {
-		return [...this.inflight.keys()].some((flight) => flight.startsWith(`${key}#`));
-	}
-
+	/** The object as the loader asks for it: with what its facts derive from, and its name. */
 	private fetchObject(type: Resource, gid: string): Promise<AsanaObject | undefined> {
-		const key = `${type}:${gid}`;
-		const cached = this.objects.get(key);
-		if (cached !== undefined) {
-			return Promise.resolve(cached ?? undefined);
-		}
-		const generation = this.generations.get(key) ?? 0;
-		const fetch = { type, gid, key, generation };
-		return this.shared(`${key}#${generation}`, () => this.fetchUncached(fetch));
+		return this.once(`${type}:${gid}`, () => {
+			const fields = this.requiredFields(type);
+			return this.fetch(
+				type,
+				gid,
+				fields.length > 0 ? [...new Set(["name", ...fields])] : undefined,
+			);
+		});
 	}
 
-	/** The fetch under way for `flight`, or a new one: concurrent requests for one object share a call. */
-	private shared(
-		flight: string,
-		start: () => Promise<AsanaObject | undefined>,
-	): Promise<AsanaObject | undefined> {
-		let pending = this.inflight.get(flight);
-		if (pending === undefined) {
-			pending = this.landed(flight, start());
-			this.inflight.set(flight, pending);
-		}
-		return pending;
-	}
-
-	private async landed(
-		flight: string,
-		pending: Promise<AsanaObject | undefined>,
-	): Promise<AsanaObject | undefined> {
-		try {
-			return await pending;
-		} finally {
-			this.inflight.delete(flight);
-			const key = flight.slice(0, flight.indexOf("#"));
-			if (!this.fetching(key)) {
-				this.generations.delete(key);
-			}
-		}
-	}
-
-	private fetchUncached(fetch: Fetch): Promise<AsanaObject | undefined> {
-		const fields = this.requiredFields(fetch.type);
-		const sent = fields.length > 0 ? [...new Set(["name", ...fields])] : undefined;
-		return this.fetchFresh(fetch, sent, () => true);
-	}
-
-	/**
-	 * GETs an object with `fields` (the whole object without), and caches it,
-	 * or its absence, unless a write made it stale meanwhile or it is not
-	 * `cacheable`.
-	 */
-	private async fetchFresh(
-		fetch: Fetch,
+	/** GETs an object with `fields` (the whole object without); `undefined` when Asana reports it missing or inaccessible. */
+	private async fetch(
+		type: Resource,
+		gid: string,
 		fields: readonly string[] | undefined,
-		cacheable: (object: AsanaObject) => boolean,
 	): Promise<AsanaObject | undefined> {
-		const { type, gid, key, generation } = fetch;
 		const path = objectPath(type);
 		// A gid that cannot be sent as its own path segment names nothing.
 		if (path === undefined || !isPathSegment(gid)) {
 			return undefined;
 		}
-		const ttl = type === "project" ? this.projectTtlMs : undefined;
-		// Cache only what no write has made stale since the fetch began.
-		const keep = (value: AsanaObject | null): void => {
-			if ((this.generations.get(key) ?? 0) === generation) {
-				this.objects.set(key, value, ttl);
-			}
-		};
 		try {
-			const object = await this.client.get<AsanaObject>(`${path}/${encodeURIComponent(gid)}`, {
+			return await this.client.get<AsanaObject>(`${path}/${encodeURIComponent(gid)}`, {
 				...(fields !== undefined && { opt_fields: fields }),
 			});
-			if (cacheable(object)) {
-				keep(object);
-			}
-			return object;
 		} catch (error) {
 			if (isAbsent(error)) {
 				this.logger.debug(
 					`${type} ${gid}: Asana responded ${error.status}; treating as nonexistent`,
 				);
-				keep(null);
 				return undefined;
 			}
 			throw error;
 		}
+	}
+
+	/** What the portfolios the policy names hold, listed once. */
+	private portfolios(): Promise<PortfolioIndex> {
+		return this.once("portfolios", () =>
+			new PortfolioIndex(this.client, this.logger).list(this.roots),
+		);
 	}
 
 	/** Facts of the object a reference points at (the workspace's when there is none). */
@@ -901,13 +795,10 @@ class FactsLoader {
 	}
 
 	private async projectBranch(membership: Membership, chain: readonly string[]): Promise<Branch> {
-		const [team, portfolios] = await Promise.all([
-			this.teamOf(membership),
-			this.portfolios.containing(membership.project),
-		]);
+		const [team, portfolios] = await Promise.all([this.teamOf(membership), this.portfolios()]);
 		return {
 			...(team !== undefined && { team }),
-			portfolios,
+			portfolios: portfolios.containing(membership.project),
 			project: membership.project,
 			...(membership.section !== undefined && { section: membership.section }),
 			taskChain: chain,
@@ -985,9 +876,10 @@ class FactsLoader {
 			return undefined;
 		}
 		const team = gidOf(project.team);
+		const portfolios = await this.portfolios();
 		const branch: Branch = {
 			...(team !== undefined && { team }),
-			portfolios: await this.portfolios.containing(gid),
+			portfolios: portfolios.containing(gid),
 			project: gid,
 			taskChain: [],
 			unhomed: false,
@@ -1023,9 +915,10 @@ class FactsLoader {
 		if (gid === undefined) {
 			return undefined;
 		}
+		const portfolios = await this.portfolios();
 		return {
 			workspace: gidOf(portfolio.workspace) ?? this.policy.workspace,
-			branches: [{ ...WORKSPACE_BRANCH, portfolios: await this.portfolios.lineageOf(gid) }],
+			branches: [{ ...WORKSPACE_BRANCH, portfolios: portfolios.lineageOf(gid) }],
 		};
 	}
 
@@ -1060,6 +953,7 @@ export {
 	FactsLoader,
 	hasPlace,
 	membershipsOf,
+	placedBy,
 	PARENT_TYPES,
 	readOperationOf,
 	reliedMembers,

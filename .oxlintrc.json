@@ -93,7 +93,7 @@
       "files": [
         "src/catalog/classification.ts",
         "src/gate/facts.ts",
-        "src/gate/gate.ts",
+        "src/gate/passage.ts",
         "src/mcp/tools.ts"
       ],
       "rules": {

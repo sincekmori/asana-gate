@@ -9,7 +9,6 @@ import { Gate } from "../src/gate/gate.ts";
 import { compilePolicy } from "../src/policy/compile.ts";
 import { parsePolicy } from "../src/policy/load.ts";
 import { createFakeAsana } from "./helpers/fake-asana.ts";
-import { fakeResolver } from "./helpers/fake-resolver.ts";
 import { type Fake, items, setupGate } from "./helpers/gate.ts";
 import {
 	fieldsSentTo,
@@ -18,16 +17,17 @@ import {
 	TEAM_POLICY,
 	tracked,
 } from "./helpers/requests.ts";
+import { CONTEXT } from "./helpers/world.ts";
 
 /** A gate over the fake whose requests go through {@link tracked}. */
-async function trackedGate(
+function trackedGate(
 	policy: string,
 	failing?: ReadonlySet<string>,
-): Promise<{ fake: Fake; gate: Gate; concurrency: number[] }> {
+): { fake: Fake; gate: Gate; concurrency: number[] } {
 	const fake = createFakeAsana();
 	const { fetch, concurrency } = tracked(fake.fetch, failing);
 	const client = new AsanaClient({ token: "t", fetch, maxRetries: 0 });
-	const compiled = await compilePolicy(parsePolicy(policy), fakeResolver);
+	const compiled = compilePolicy(parsePolicy(policy), CONTEXT);
 	return { fake, gate: new Gate({ client, policy: compiled }), concurrency };
 }
 
@@ -97,9 +97,9 @@ describe("the task members the gate asks for", () => {
 	});
 
 	it.each([
-		["tag: ai-ok", ["tags"]],
+		['tag: "41"', ["tags"]],
 		["assignee: me", ["assignee"]],
-		["custom_field: { Owner: AI }", ["custom_fields.gid", "custom_fields.enum_value.gid"]],
+		['custom_field: { "61": "71" }', ["custom_fields.gid", "custom_fields.enum_value.gid"]],
 		["completed: true", ["completed"]],
 		["created_by: me", ["created_by"]],
 		["created_within: 7d", ["created_at"]],
@@ -119,7 +119,7 @@ rules:
 
 	it("are all asked for when explain shows every fact", async () => {
 		const fake = createFakeAsana();
-		const policy = await compilePolicy(parsePolicy(PROJECT_POLICY), fakeResolver);
+		const policy = compilePolicy(parsePolicy(PROJECT_POLICY), CONTEXT);
 		const client = new AsanaClient({ token: "t", fetch: fake.fetch, maxRetries: 0 });
 		const loader = new FactsLoader({ client, policy, allFacts: true });
 		const loaded = await loader.load("task", "107");
@@ -139,7 +139,7 @@ rules:
 describe("probing an object of unknown type", () => {
 	// GET /events tries project, task, goal, portfolio and section, in that order.
 	it("tries the first type alone and the others at once", async () => {
-		const { fake, gate, concurrency } = await trackedGate(PROJECT_POLICY);
+		const { fake, gate, concurrency } = trackedGate(PROJECT_POLICY);
 		await gate.execute({ method: "GET", path: "/events", query: { resource: "31" } });
 		expect(requests(fake).slice(0, 5)).toStrictEqual([
 			"GET /projects/31",
@@ -152,13 +152,13 @@ describe("probing an object of unknown type", () => {
 	});
 
 	it("costs one request when the first type is the object's", async () => {
-		const { fake, gate } = await trackedGate(PROJECT_POLICY);
+		const { fake, gate } = trackedGate(PROJECT_POLICY);
 		await gate.execute({ method: "GET", path: "/events", query: { resource: "21" } });
 		expect(requests(fake)).toStrictEqual(["GET /projects/21", "GET /events"]);
 	});
 
 	it("ignores an error of a type after the one that exists", async () => {
-		const { gate } = await trackedGate(PROJECT_POLICY, new Set(["/goals/101"]));
+		const { gate } = trackedGate(PROJECT_POLICY, new Set(["/goals/101"]));
 		const response = await gate.execute({
 			method: "GET",
 			path: "/events",
@@ -168,7 +168,7 @@ describe("probing an object of unknown type", () => {
 	});
 
 	it("fails on an error of a type before the one that exists", async () => {
-		const { gate } = await trackedGate(PROJECT_POLICY, new Set(["/goals/31"]));
+		const { gate } = trackedGate(PROJECT_POLICY, new Set(["/goals/31"]));
 		const response = await gate.execute({
 			method: "GET",
 			path: "/events",

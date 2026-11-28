@@ -101,7 +101,7 @@ rules:
 describe("the task being placed is the one judged", () => {
 	it("judges an assignee given by email as the user it names", async () => {
 		const { gate } = await setupGate(
-			`${POLICY}  - where: { project: "21", assignee: "bob@acme.test" }\n    deny: [task:create]\n`,
+			`${POLICY}  - where: { project: "21", assignee: "52" }\n    deny: [task:create]\n`,
 		);
 		const byGid = await gate.execute({
 			method: "POST",
@@ -111,7 +111,7 @@ describe("the task being placed is the one judged", () => {
 		const byEmail = await gate.execute({
 			method: "POST",
 			path: "/tasks",
-			body: { name: "x", projects: ["21"], assignee: "bob@acme.test" },
+			body: { name: "x", projects: ["21"], assignee: "52" },
 		});
 		expect([byGid.status, byEmail.status]).toStrictEqual([403, 403]);
 	});
@@ -161,14 +161,14 @@ version: 1
 workspace: "1"
 rules:
   - allow: [read]
-  - where: { team: "Platform" }
+  - where: { team: "11" }
     allow: [project:update]
 `;
 		const { gate } = await setupGate(policy);
 		const move = { method: "PUT", path: "/projects/21", body: { team: "12" } } as const;
 		await expect(gate.authorize(move)).rejects.toMatchObject({ status: 403 });
 		const { gate: hidden } = await setupGate(
-			`${policy}  - where: { team: "Design" }\n    deny: ["*"]\n`,
+			`${policy}  - where: { team: "12" }\n    deny: ["*"]\n`,
 		);
 		await expect(hidden.authorize(move)).rejects.toMatchObject({ status: 404 });
 		await expect(

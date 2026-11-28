@@ -5,7 +5,7 @@ import type { Action, Resource } from "../catalog/resources.ts";
 import type { FieldApplication, FieldRequirement, RateLimit } from "./constraints.ts";
 import type { PolicyRule } from "./schema.ts";
 
-/** A policy file is malformed, references something unknown, or is ambiguous. */
+/** A policy file is malformed or says something that cannot hold. */
 class PolicyError extends Error {
 	public override readonly name: string = "PolicyError";
 }
@@ -36,10 +36,8 @@ const LEVELS = {
 /** `custom_field` predicate: the field (by gid) must hold one of `values`. */
 interface CompiledCustomFieldPredicate {
 	readonly fieldGid: string;
-	/** Accepted values: enum option gids, option names and display values. */
+	/** Accepted values: the gid of an option or of another object the field holds, or its text. */
 	readonly values: ReadonlySet<string>;
-	/** Values the policy wrote that match no option of an enum field: a typo, or an option since removed. */
-	readonly unmatched?: readonly string[];
 }
 
 /** A compiled predicate on an object's name. */
@@ -50,7 +48,7 @@ interface CompiledNamePredicate {
 	readonly matches?: RegExp;
 }
 
-/** A `where` clause with every name resolved to gids. */
+/** A `where` clause as sets of gids (`me` as the gid of the token's user). */
 interface CompiledWhere {
 	readonly teams?: ReadonlySet<string>;
 	readonly portfolios?: ReadonlySet<string>;
@@ -71,7 +69,7 @@ interface CompiledWhere {
 	readonly createdWithinMs?: number;
 }
 
-/** The content constraints of one rule, with names resolved. Member keys are `name` or `custom_fields.<gid>`. */
+/** The content constraints of one rule. Member keys are `name` or `custom_fields.<gid>`. */
 interface CompiledConstraints {
 	readonly require: ReadonlyMap<Resource, ReadonlyMap<string, FieldRequirement>>;
 	readonly apply: ReadonlyMap<Resource, ReadonlyMap<string, FieldApplication>>;
@@ -79,8 +77,6 @@ interface CompiledConstraints {
 	readonly redact: ReadonlyMap<Resource, ReadonlySet<string>>;
 	readonly limit: ReadonlyMap<Action, RateLimit>;
 	readonly confirm: ReadonlySet<Action>;
-	/** Human names for `custom_fields.<gid>` keys, for messages. */
-	readonly labels: ReadonlyMap<string, string>;
 }
 
 /** Where a policy file sits: the project's (or the one pointed at), the user's own, or an administrator's. */
@@ -103,7 +99,7 @@ interface PolicyLayer {
 }
 
 /**
- * One statement of a rule with a resolved scope: an `allow`, a `deny`, or
+ * One statement of a rule with its scope compiled: an `allow`, a `deny`, or
  * the rule's constraints (`constrain`, which takes no part in permission
  * decisions).
  */

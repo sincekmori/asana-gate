@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { AsanaClient } from "../asana/client.ts";
-import { FileListingCache } from "../gate/listing-cache.ts";
 import type { JsonObject } from "../json.ts";
 import {
 	createLogger,
@@ -31,8 +30,6 @@ interface CommandContext {
 	/** Where the token came from (never the token itself). */
 	readonly token: TokenSource;
 	readonly log: LogState;
-	/** The listing cache for this token, when caching is on. */
-	readonly cache?: FileListingCache;
 }
 
 /** Opens the log file the settings name; one that cannot be opened is reported on stderr and remembered. */
@@ -54,7 +51,7 @@ async function openSink(
 	}
 }
 
-/** Builds the client, logger and cache the settings describe, with the token they lead to. */
+/** Builds the client and the logger the settings describe, with the token they lead to. */
 async function connect(loaded: LoadedSettings): Promise<CommandContext> {
 	const { settings } = loaded;
 	const [opened, { token, ...source }] = await Promise.all([
@@ -72,15 +69,7 @@ async function connect(loaded: LoadedSettings): Promise<CommandContext> {
 		enable: settings.asana.enable,
 		disable: settings.asana.disable,
 	});
-	const cache = settings.cache.enabled
-		? new FileListingCache({
-				dir: settings.cache.dir,
-				token,
-				ttlMs: durationMs(settings.cache.ttl),
-				logger,
-			})
-		: undefined;
-	return { client, logger, loaded, token: source, log: opened.log, ...(cache && { cache }) };
+	return { client, logger, loaded, token: source, log: opened.log };
 }
 
 /** Loads the settings with the command line as their `flags` layer, then connects. */

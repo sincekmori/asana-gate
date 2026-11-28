@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 import { isAbsent } from "../asana/errors.ts";
-import { AsanaNameResolver, collect, matches, type Named, named } from "../gate/resolver.ts";
+import { collect, type Named, named } from "../gate/identity.ts";
 import { POLICY_FILE, PROJECT_DIR } from "../settings/paths.ts";
 import { isFile } from "../system.ts";
 import { AGENT_NAMES, agentsNamed, wireAgents } from "./agent.ts";
@@ -24,8 +24,8 @@ const INIT_OPTIONS = {
 	workspace: {
 		type: "string",
 		short: "w",
-		placeholder: "<ref>",
-		description: "Workspace gid or name (required when the token sees several)",
+		placeholder: "<gid>",
+		description: "Workspace gid (required when the token sees several)",
 	},
 	agent: {
 		type: "string",
@@ -55,18 +55,14 @@ ${usageRows(INIT_OPTIONS)}`;
 /** How many workspaces `init` lists when it asks which one. */
 const MAX_WORKSPACES = 100;
 
-/** The workspace to set up: the one `ref` names, or the only one the token sees. */
-function chooseWorkspace(workspaces: readonly Named[], ref: string | undefined): Named {
-	const keep = ref === undefined ? undefined : matches(ref);
-	const matching = keep === undefined ? workspaces : workspaces.filter((w) => keep(w));
+/** The workspace to set up: the one `gid` names, or the only one the token sees. */
+function chooseWorkspace(workspaces: readonly Named[], gid: string | undefined): Named {
+	const matching = gid === undefined ? workspaces : workspaces.filter((w) => w.gid === gid);
 	const [first, second] = matching;
 	if (first !== undefined && second === undefined) {
 		return first;
 	}
-	let problem = "pass --workspace";
-	if (ref !== undefined) {
-		problem = first === undefined ? `no workspace "${ref}"` : `workspace "${ref}" is ambiguous`;
-	}
+	const problem = gid === undefined ? "pass --workspace <gid>" : `no workspace ${gid}`;
 	const list = workspaces.map((w) => `  ${w.gid}  ${w.name}`).join("\n");
 	const seen =
 		workspaces.length >= MAX_WORKSPACES
@@ -84,21 +80,26 @@ function noTeams(error: unknown): Named[] {
 }
 
 /** Looks at the workspace and renders the policy skeleton for it. */
-async function surveyedPolicy(context: CommandContext, ref: string | undefined): Promise<string> {
+async function surveyedPolicy(context: CommandContext, gid: string | undefined): Promise<string> {
 	const { client } = context;
 	const workspaces = await collect(
 		client,
 		{ path: "/workspaces", query: { opt_fields: ["name"] }, max: MAX_WORKSPACES },
 		named,
 	);
-	// The list shows at most a page; a workspace beyond it is still found by its gid or name.
+	// The list shows at most a page; a workspace beyond it is still found by its gid.
 	const beyond =
-		ref !== undefined && workspaces.length >= MAX_WORKSPACES && !workspaces.some(matches(ref));
+		gid !== undefined &&
+		workspaces.length >= MAX_WORKSPACES &&
+		!workspaces.some((workspace) => workspace.gid === gid);
 	const workspace = beyond
-		? await new AsanaNameResolver(client)
-				.workspace(ref)
-				.catch(() => chooseWorkspace(workspaces, ref))
-		: chooseWorkspace(workspaces, ref);
+		? await client
+				.get<Record<string, unknown>>(`/workspaces/${encodeURIComponent(gid)}`, {
+					opt_fields: ["name"],
+				})
+				.then((found) => named(found) ?? chooseWorkspace(workspaces, gid))
+				.catch(() => chooseWorkspace(workspaces, gid))
+		: chooseWorkspace(workspaces, gid);
 	const [teams, projects] = await Promise.all([
 		collect(
 			client,

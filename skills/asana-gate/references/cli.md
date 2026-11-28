@@ -9,13 +9,12 @@ asana-gate explain <gid>           Show what the policy allows on one object, an
 asana-gate init                    Create the project's .asana-gate directory; --agent claude-code wires Claude Code
 asana-gate token                   Show where the Asana token comes from, or save one (never printed)
 asana-gate settings                Show the settings in force and where each value comes from
-asana-gate cache                   Show or clear the on-disk cache of workspace names
 asana-gate <resource> <verb> …     Operate Asana through the policy
 asana-gate api <METHOD> <path>     Call any Asana REST operation through the policy
 ```
 
 Common options: `-C <dir>` (run as if started in `<dir>`), `--policy <file>` on the commands that read a policy (default: the project's `.asana-gate/policy.yaml`, see [Configuration](#configuration)), `--token-env <NAME>` (default `ASANA_ACCESS_TOKEN`), `--log-level silent|error|warn|info|debug`.
-`check` fails (exit code 1) on a problem, such as an object the policy names that no longer exists, and only warns about the rest.
+`check` fails (exit code 1) on a problem, such as an object the policy names that no longer exists or an option an enum custom field does not have (its options are listed with their gids), and only warns about the rest.
 `init` and `explain` read Asana without the policy's restrictions; they exist to write policies and are not reachable over MCP.
 `explain` also prints the constraints in force on the object.
 
@@ -56,7 +55,7 @@ asana-gate keeps its files the way Claude Code does: a `.asana-gate` directory i
 | Layer                 | Where                                                                                                                                                                                                                                                                                                  | For                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
 | Managed               | `/Library/Application Support/asana-gate/managed-settings.yaml` (macOS), `/etc/asana-gate/managed-settings.yaml` (Linux), `%ProgramData%\asana-gate\managed-settings.yaml` (Windows), plus `managed-settings.d/*.yaml`; `managed-policy.yaml` beside them is a policy every other policy is bounded by | An administrator; nothing overrides these |
-| Flags and environment | `-C`, `--policy`, `--token-env`, `--log-level`; `ASANA_GATE_POLICY`, `ASANA_GATE_LOG_LEVEL`, `ASANA_GATE_CACHE=off`, `ASANA_GATE_HOME`                                                                                                                                                                 | One invocation                            |
+| Flags and environment | `-C`, `--policy`, `--token-env`, `--log-level`; `ASANA_GATE_POLICY`, `ASANA_GATE_LOG_LEVEL`, `ASANA_GATE_HOME`                                                                                                                                                                                         | One invocation                            |
 | Project, personal     | `.asana-gate/settings.local.yaml`                                                                                                                                                                                                                                                                      | You, in this project (ignored by git)     |
 | Project, shared       | `.asana-gate/settings.yaml`                                                                                                                                                                                                                                                                            | Everyone working in the project           |
 | User                  | `~/.asana-gate/settings.yaml`                                                                                                                                                                                                                                                                          | You, in every project                     |
@@ -76,9 +75,6 @@ Every layer may set any of these members, all optional; relative paths are relat
 | `token.file`                                                                    | the project's `.asana-gate/token`, else `~/.asana-gate/token`                                                                               | A file holding the token on its first line                                                                                                                                                                                                            |
 | `log.level`                                                                     | `warn`                                                                                                                                      | `silent`, `error`, `warn`, `info` or `debug`                                                                                                                                                                                                          |
 | `log.file`                                                                      | `~/.asana-gate/logs/asana-gate.log`                                                                                                         | A file log lines are also appended to, created readable by you alone (`check` warns if not), rotated at 10 MB; `null` for none                                                                                                                        |
-| `cache.enabled`                                                                 | `true`                                                                                                                                      | Whether name resolution keeps the workspace's structure on disk between runs                                                                                                                                                                          |
-| `cache.dir`                                                                     | `~/.asana-gate/cache`                                                                                                                       | Where; one subdirectory per token, named by a hash of it                                                                                                                                                                                              |
-| `cache.ttl`                                                                     | `7d`                                                                                                                                        | How long a cached listing is trusted                                                                                                                                                                                                                  |
 | `concurrency.reads`                                                             | `50`                                                                                                                                        | Concurrent GET requests to Asana (its limit)                                                                                                                                                                                                          |
 | `concurrency.writes`                                                            | `15`                                                                                                                                        | Concurrent POST, PUT and DELETE requests (its limit)                                                                                                                                                                                                  |
 | `retries.max`                                                                   | `5`                                                                                                                                         | Retries after a 429, or after a 5xx for anything but a POST, waiting as long as `Retry-After` says                                                                                                                                                    |
@@ -102,14 +98,6 @@ The Personal Access Token is read from the first of these sources, and `asana-ga
 The files are created readable by you alone, and `check` warns when one is not.
 A token file in the project is what hosts without environment variables read, such as Claude Cowork (see [Agents](#agents)).
 
-### Cache
-
-Resolving the names in a policy (teams, projects, sections, tags, custom fields) means listing them, and that is the slow part of starting the gate.
-With the cache on, those listings are kept under `cache.dir` in files only you can read and reused until `cache.ttl` passes; a name missing from a cached listing is looked up live before it counts as unknown, so a project created an hour ago still resolves.
-The cache holds the names and gids of the workspace's structure, never tokens, tasks or comments; what the gate learns about objects while it runs stays in memory.
-Where even that is too much, turn it off in any layer with `cache.enabled: false`, for one run with `ASANA_GATE_CACHE=off`, or for everyone with a managed setting.
-`asana-gate cache` shows the cache and `asana-gate cache clear` deletes every token's listings in it (other files in `cache.dir` stay).
-
 ### Concurrency
 
 The gate sends independent requests at the same time, up to Asana's own limits of 50 reads and 15 writes in flight per token (lower if `concurrency` says so): a page of tasks is checked with one lookup per task at once, the objects a write names are loaded together, and the actions of a `POST /batch` are planned together.
@@ -118,9 +106,8 @@ An agent that needs many objects at once should send one `POST /batch` with up t
 
 ### Noticing failures
 
-The gate degrades rather than stops when its own files fail: a cache directory that cannot be written is left alone after one warning and names are read from Asana each time, and a log file that cannot be opened leaves warnings on stderr only.
-Three things make such a failure visible:
+The gate degrades rather than stops when its own files fail: a log file that cannot be opened leaves warnings on stderr only.
+Two things make a failure visible:
 
 - the warning itself, on stderr and in the log file (`~/.asana-gate/logs/asana-gate.log` by default), where the MCP server's warnings land even when nobody watches its stderr;
-- `asana-gate check`, which probes the cache and log directories, the token file's permissions and every object the policy names, and fails on what is broken;
-- `asana-gate cache`, which shows whether the cache directory is writable.
+- `asana-gate check`, which probes the log file, the token file's permissions and every object the policy names, and fails on what is broken.

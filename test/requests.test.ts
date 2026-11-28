@@ -72,7 +72,7 @@ describe("attachments", () => {
 		const { fake, gate } = await setupGate(POLICY);
 		const response = await gate.execute(linkRequest("107", "doc", gate.policy));
 		expect(response.status).toBe(201);
-		expect(fake.calls.at(-1)?.form?.name).toBe("[AI] doc");
+		expect(fake.calls.find((call) => call.method === "POST")?.form?.name).toBe("[AI] doc");
 	});
 });
 

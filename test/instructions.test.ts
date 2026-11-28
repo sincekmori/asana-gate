@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import { stringOf } from "../src/json.ts";
 import { instructionsFor } from "../src/mcp/instructions.ts";
-import { WORLD } from "./helpers/fake-resolver.ts";
 import { data, setupGate } from "./helpers/gate.ts";
+import { WORLD } from "./helpers/world.ts";
 
 const HEADER = 'version: 1\nworkspace: "1"\nrules:\n';
 

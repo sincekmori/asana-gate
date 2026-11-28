@@ -7,114 +7,48 @@ import { type Logger, silentLogger } from "../log.ts";
 import { EMPTY } from "../policy/evaluate.ts";
 import { type AsanaObject, stringOf } from "./objects.ts";
 
-interface Index {
-	/** project gid → the policy portfolios (transitively) containing it */
-	readonly projects: Map<string, Set<string>>;
-	/** portfolio gid → itself and the policy portfolios (transitively) containing it */
-	readonly portfolios: Map<string, Set<string>>;
-}
-
-/** Options for {@link PortfolioIndex}. */
-interface PortfolioIndexOptions {
-	readonly client: AsanaClient;
-	/** The portfolios the policy names. */
-	readonly roots: ReadonlySet<string>;
-	/** How long a snapshot is reused, in milliseconds. */
-	readonly ttlMs: number;
-	readonly logger?: Logger;
-}
-
 /**
- * Knows which projects (and nested portfolios) the portfolios named by the
- * policy contain, so `where: { portfolio }` rules can be evaluated without
- * an Asana call per request. Rebuilt lazily once the snapshot is older than
- * the TTL.
+ * What the portfolios a policy names hold, nested portfolios included, as
+ * one listing of them found it: Asana tells what a portfolio holds, not
+ * which portfolios hold a project, so `where: { portfolio }` rules are
+ * evaluated against this.
  */
 class PortfolioIndex {
+	/** project gid → the policy portfolios (transitively) containing it */
+	private readonly projects = new Map<string, Set<string>>();
+	/** portfolio gid → itself and the policy portfolios (transitively) containing it */
+	private readonly portfolios = new Map<string, Set<string>>();
 	private readonly client: AsanaClient;
-	private readonly roots: ReadonlySet<string>;
-	private readonly ttlMs: number;
 	private readonly logger: Logger;
-	private index: Index | undefined = undefined;
-	private builtAt = 0;
-	private building: Promise<Index> | undefined = undefined;
-	/** Bumped by every invalidation, so a build that saw older contents is not kept. */
-	private generation = 0;
 
-	public constructor(options: PortfolioIndexOptions) {
-		this.client = options.client;
-		this.roots = options.roots;
-		this.ttlMs = options.ttlMs;
-		this.logger = options.logger ?? silentLogger;
+	public constructor(client: AsanaClient, logger: Logger = silentLogger) {
+		this.client = client;
+		this.logger = logger;
+	}
+
+	/** Lists what `roots`, the portfolios the policy names, hold; a listing that fails fails them all. */
+	public async list(roots: ReadonlySet<string>): Promise<this> {
+		await Promise.all([...roots].map((root) => this.walk(root, [root])));
+		this.logger.debug(`portfolios listed: ${this.projects.size} projects`);
+		return this;
 	}
 
 	/** The policy portfolios containing a project. */
-	public async containing(projectGid: string): Promise<ReadonlySet<string>> {
-		if (this.roots.size === 0) {
-			return EMPTY;
-		}
-		const index = await this.current();
-		return index.projects.get(projectGid) ?? EMPTY;
+	public containing(projectGid: string): ReadonlySet<string> {
+		return this.projects.get(projectGid) ?? EMPTY;
 	}
 
 	/** A portfolio itself plus the policy portfolios containing it. */
-	public async lineageOf(portfolioGid: string): Promise<ReadonlySet<string>> {
-		if (this.roots.size === 0) {
-			return new Set([portfolioGid]);
-		}
-		const index = await this.current();
-		return index.portfolios.get(portfolioGid) ?? new Set([portfolioGid]);
+	public lineageOf(portfolioGid: string): ReadonlySet<string> {
+		return this.portfolios.get(portfolioGid) ?? new Set([portfolioGid]);
 	}
 
-	/**
-	 * Drops the snapshot after a write to `portfolioGid` when it (or one being
-	 * built) may list it, so the next lookup rebuilds it; a build under way is
-	 * not kept either.
-	 */
-	public invalidateFor(portfolioGid: string): void {
-		if (this.building !== undefined || this.index?.portfolios.has(portfolioGid) === true) {
-			this.index = undefined;
-			this.generation += 1;
-		}
-	}
-
-	private current(): Promise<Index> {
-		if (this.index !== undefined && Date.now() - this.builtAt < this.ttlMs) {
-			return Promise.resolve(this.index);
-		}
-		this.building ??= this.buildOnce();
-		return this.building;
-	}
-
-	private async buildOnce(): Promise<Index> {
-		try {
-			return await this.build();
-		} finally {
-			this.building = undefined;
-		}
-	}
-
-	private async build(): Promise<Index> {
-		const started = this.generation;
-		const index: Index = { projects: new Map(), portfolios: new Map() };
-		// A failed walk fails the build: nothing is kept, and the next lookup tries again.
-		await Promise.all([...this.roots].map((root) => this.walk(root, [root], index)));
-		if (this.generation !== started) {
-			// A portfolio changed while it was listed: list again.
-			return this.build();
-		}
-		this.index = index;
-		this.builtAt = Date.now();
-		this.logger.debug(`portfolio index built: ${index.projects.size} projects`);
-		return index;
-	}
-
-	private async walk(portfolio: string, lineage: readonly string[], index: Index): Promise<void> {
-		const own = index.portfolios.get(portfolio) ?? new Set<string>();
+	private async walk(portfolio: string, lineage: readonly string[]): Promise<void> {
+		const own = this.portfolios.get(portfolio) ?? new Set<string>();
 		for (const gid of lineage) {
 			own.add(gid);
 		}
-		index.portfolios.set(portfolio, own);
+		this.portfolios.set(portfolio, own);
 		const items: AsanaObject[] = [];
 		try {
 			for await (const item of this.client.paginate<AsanaObject>(`/portfolios/${portfolio}/items`, {
@@ -141,14 +75,14 @@ class PortfolioIndex {
 				this.logger.debug(`portfolio ${portfolio}: skipping an item without a gid`);
 			} else if (item.resource_type === "portfolio") {
 				if (!lineage.includes(gid)) {
-					nested.push(this.walk(gid, [...lineage, gid], index));
+					nested.push(this.walk(gid, [...lineage, gid]));
 				}
 			} else {
-				const set = index.projects.get(gid) ?? new Set<string>();
+				const set = this.projects.get(gid) ?? new Set<string>();
 				for (const ancestor of lineage) {
 					set.add(ancestor);
 				}
-				index.projects.set(gid, set);
+				this.projects.set(gid, set);
 			}
 		}
 		await Promise.all(nested);
@@ -156,4 +90,3 @@ class PortfolioIndex {
 }
 
 export { PortfolioIndex };
-export type { PortfolioIndexOptions };

@@ -9,21 +9,30 @@ import { constraintJson } from "../src/policy/effective.ts";
 import { parsePolicy } from "../src/policy/load.ts";
 import { referencesOf } from "../src/policy/references.ts";
 import { needsTaskChain } from "../src/policy/scope.ts";
-import { PolicyError } from "../src/policy/types.ts";
+import { type Policy, PolicyError } from "../src/policy/types.ts";
 import { examplePolicy } from "./helpers/example-policy.ts";
-import { fakeResolver, WORLD } from "./helpers/fake-resolver.ts";
+import { CONTEXT, WORLD } from "./helpers/world.ts";
 
-const policyPromise = examplePolicy;
+const policy = examplePolicy;
+
+const compile = (rules: string): Policy =>
+	compilePolicy(parsePolicy(`version: 1\nworkspace: "1"\nrules:\n${rules}`), CONTEXT);
+
+const ruleText = (block: string): string =>
+	`version: 1\nworkspace: "1"\nrules:\n  - where: { project: "21" }\n    ${block}\n`;
+
+/** Parses a policy whose one rule has the scope `where`. */
+const scoped = (where: string) => (): unknown =>
+	parsePolicy(`version: 1\nworkspace: "1"\nrules:\n  - where: ${where}\n    allow: [read]\n`);
 
 describe("compilePolicy", () => {
-	it("resolves the workspace and the token's user", async () => {
-		const policy = await policyPromise;
+	it("governs the workspace it names, for the token's user", () => {
 		expect(policy.workspace).toBe("1");
+		expect(policy.workspaceName).toBe("Acme");
 		expect(policy.me).toStrictEqual(WORLD.me);
 	});
 
-	it("splits allow/deny and ranks specificity", async () => {
-		const policy = await policyPromise;
+	it("splits allow/deny and ranks specificity", () => {
 		expect(
 			policy.rules.map(
 				(r) => `${r.index}:${r.effect}:${r.specificity.level}.${r.specificity.cross}`,
@@ -43,19 +52,17 @@ describe("compilePolicy", () => {
 		expect(needsTaskChain(policy)).toBe(true);
 	});
 
-	it("resolves the names used in scopes", async () => {
-		const policy = await policyPromise;
+	it("reads scopes as sets of gids, `me` as the token's user", () => {
 		expect(policy.rules.at(1)?.where.teams).toStrictEqual(new Set(["11"]));
 		expect(policy.rules.at(3)?.where.sections).toStrictEqual(new Set(["32"]));
 		expect(policy.rules.at(4)?.where.tags).toStrictEqual(new Set(["41"]));
 		expect(policy.rules.at(7)?.where.assignees).toStrictEqual(new Set(["51"]));
 		expect(policy.rules.at(7)?.where.customFields).toStrictEqual([
-			{ fieldGid: "61", values: new Set(["AI", "71"]) },
+			{ fieldGid: "61", values: new Set(["71"]) },
 		]);
 	});
 
-	it("lets `fields` grant a limited update (plus the verbs the fields stand for)", async () => {
-		const policy = await policyPromise;
+	it("lets `fields` grant a limited update (plus the verbs the fields stand for)", () => {
 		const rule = policy.rules.at(5);
 		expect(rule?.actions.has("task:update")).toBe(true);
 		expect(rule?.actions.has("task:complete")).toBe(true);
@@ -63,75 +70,81 @@ describe("compilePolicy", () => {
 		expect(rule?.fields?.get("task")).toStrictEqual(new Set(["completed", "assignee", "due_on"]));
 	});
 
-	it("rejects unknown names, resources and verbs", async () => {
-		await expect(
-			compilePolicy(
-				parsePolicy(
-					"version: 1\nworkspace: Acme\nrules:\n  - where: { project: Nope }\n    allow: [read]\n",
-				),
-				fakeResolver,
-			),
-		).rejects.toThrow(/project "Nope" was not found/u);
-		await expect(
-			compilePolicy(
-				parsePolicy("version: 1\nworkspace: Acme\nrules:\n  - allow: [widget:read]\n"),
-				fakeResolver,
-			),
-		).rejects.toThrow(/unknown resource "widget"/u);
-		await expect(
-			compilePolicy(
-				parsePolicy("version: 1\nworkspace: Acme\nrules:\n  - allow: [task:fly]\n"),
-				fakeResolver,
-			),
-		).rejects.toThrow(/unknown verb "fly"/u);
+	it("rejects unknown resources and verbs", () => {
+		expect(() => compile("  - allow: [widget:read]\n")).toThrow(/unknown resource "widget"/u);
+		expect(() => compile("  - allow: [task:fly]\n")).toThrow(/unknown verb "fly"/u);
 	});
 });
 
-const compile = (rules: string): ReturnType<typeof compilePolicy> =>
-	compilePolicy(parsePolicy(`version: 1\nworkspace: Acme\nrules:\n${rules}`), fakeResolver);
+describe("naming objects", () => {
+	it("takes a gid alone wherever a scope names an object, since a name tells no object from another", () => {
+		expect(scoped("{ project: Backend }")).toThrow("expected a gid in quotes");
+		expect(scoped('{ tag: ["41", frozen] }')).toThrow(PolicyError);
+		expect(scoped('{ custom_field: { Owner: "71" } }')).toThrow(PolicyError);
+		expect(scoped('{ project: ["21", "22"], section: "32", team: "11" }')).not.toThrow();
+	});
 
-const ruleText = (block: string): string =>
-	`version: 1\nworkspace: Acme\nrules:\n  - where: { project: "21" }\n    ${block}\n`;
+	it("names a user by gid or as `me`, not by email", () => {
+		expect(scoped("{ assignee: bob@acme.test }")).toThrow("expected a gid in quotes");
+		expect(scoped('{ assignee: [me, "52"], created_by: me }')).not.toThrow();
+	});
+
+	it("asks for the quotes that keep a gid from being read as a number", () => {
+		expect(scoped("{ project: 21 }")).toThrow(
+			'expected a gid in quotes, such as "1200000000000123"',
+		);
+		expect(() => parsePolicy("version: 1\nworkspace: Acme\nrules: []\n")).toThrow(PolicyError);
+	});
+
+	it("refuses a name among the values of a member that names objects", () => {
+		expect(() => compile("  - apply: { task: { tags: { add: [ai-ok] } } }\n")).toThrow(
+			'rules[0].apply.task.tags: "ai-ok" is no gid; tags names objects by gid, in quotes',
+		);
+		expect(() => compile("  - require: { task: { assignee: { in: [bob@acme.test] } } }\n")).toThrow(
+			'assignee names objects by gid (a user also by "me"), in quotes',
+		);
+	});
+});
 
 describe("constraint values and member names", () => {
-	it("resolves the names in require and apply values to the gids Asana expects", async () => {
-		const policy = await compile(`  - where: { project: "21" }
+	it("takes the values of require and apply as a request sends them, `me` as the token's user", () => {
+		const compiled = compile(`  - where: { project: "21" }
     allow: ["task:*"]
     require:
       task:
-        tags: { not_in: [frozen] }
+        tags: { not_in: ["42"] }
         assignee: { in: [me] }
-        custom_fields: { Owner: { in: [AI] } }
+        custom_fields: { "61": { in: ["71"] } }
     apply:
       task:
-        tags: { add: [ai-ok] }
-        custom_fields: { Owner: AI }
+        tags: { add: ["41"] }
+        custom_fields: { "61": "71" }
 `);
-		const constraints = policy.rules.find((rule) => rule.effect === "constrain")?.constraints;
+		const constraints = compiled.rules.find((rule) => rule.effect === "constrain")?.constraints;
 		const require = constraints?.require.get("task");
-		// Each value as a request sends it, with how the policy wrote it.
-		expect(require?.get("tags")?.not_in).toStrictEqual(new Map([["42", "frozen"]]));
-		expect(require?.get("assignee")?.in).toStrictEqual(new Map([["51", "me"]]));
-		expect(require?.get("custom_fields.61")?.in).toStrictEqual(new Map([["71", "AI"]]));
+		expect(require?.get("tags")?.not_in).toStrictEqual(new Set(["42"]));
+		expect(require?.get("assignee")?.in).toStrictEqual(new Set(["51"]));
+		expect(require?.get("custom_fields.61")?.in).toStrictEqual(new Set(["71"]));
 		const apply = constraints?.apply.get("task");
 		expect(apply?.get("tags")?.add).toStrictEqual(["41"]);
 		expect(apply?.get("custom_fields.61")?.default).toBe("71");
 	});
 
-	it("shows a requirement's values with the gids sent and its patterns as written", async () => {
-		const policy = await compile(`  - where: { project: "21" }
+	it("shows a requirement's values as a list and its patterns as written", () => {
+		const compiled = compile(`  - where: { project: "21" }
     require:
       task:
-        tags: { not_in: [frozen] }
+        tags: { not_in: ["42"] }
         name: { matches: "^AI: " }
 `);
-		const require = policy.rules.find((rule) => rule.effect === "constrain")?.constraints?.require;
+		const require = compiled.rules.find((rule) => rule.effect === "constrain")?.constraints
+			?.require;
 		const shown = (key: string): string => constraintJson(require?.get("task")?.get(key));
-		expect(shown("tags")).toBe('{"not_in":{"42":"frozen"}}');
+		expect(shown("tags")).toBe('{"not_in":["42"]}');
 		expect(shown("name")).toBe('{"matches":"/^AI: /u"}');
 	});
 
-	it("rejects a misspelled operator instead of reading it as a nested name", () => {
+	it("rejects a misspelled operator instead of reading it as a custom field", () => {
 		expect(() => parsePolicy(ruleText("require: { task: { due_on: { presnt: true } } }"))).toThrow(
 			PolicyError,
 		);
@@ -139,36 +152,36 @@ describe("constraint values and member names", () => {
 			PolicyError,
 		);
 		expect(() =>
-			parsePolicy(ruleText("require: { task: { custom_fields: { Owner: { presnt: true } } } }")),
+			parsePolicy(ruleText('require: { task: { custom_fields: { "61": { presnt: true } } } }')),
 		).toThrow(PolicyError);
 		expect(() =>
-			parsePolicy(ruleText("require: { task: { custom_fields: { Owner: { in: [AI] } } } }")),
+			parsePolicy(ruleText('require: { task: { custom_fields: { "61": { in: ["71"] } } } }')),
 		).not.toThrow();
 	});
 
-	it("rejects a `fields` member the resource does not accept", async () => {
-		await expect(compile(`  - allow: [read]\n    fields: { task: [completd] }\n`)).rejects.toThrow(
+	it("rejects a `fields` member the resource does not accept", () => {
+		expect(() => compile("  - allow: [read]\n    fields: { task: [completd] }\n")).toThrow(
 			'"completd" is not a request member of task',
 		);
 	});
 
-	it("accepts the members a task's link operations change in `fields`", async () => {
-		const policy = await compile(
-			`  - allow: [read]\n    fields: { task: [dependencies, dependents] }\n`,
+	it("accepts the members a task's link operations change in `fields`", () => {
+		const compiled = compile(
+			"  - allow: [read]\n    fields: { task: [dependencies, dependents] }\n",
 		);
-		const rule = policy.rules.find((compiled) => compiled.fields !== undefined);
+		const rule = compiled.rules.find((one) => one.fields !== undefined);
 		expect(rule?.fields?.get("task")).toStrictEqual(new Set(["dependencies", "dependents"]));
 	});
 
-	it("refuses custom_fields that mix operators with field names, rather than drop either", async () => {
-		await expect(
-			compile(`  - require: { task: { custom_fields: { present: true, Owner: { in: [AI] } } } }\n`),
-		).rejects.toThrow(
-			"rules[0].require.task.custom_fields: mixes operators (present) with custom fields (Owner)",
-		);
-		await expect(
-			compile(`  - apply: { task: { custom_fields: { value: x, Owner: AI } } }\n`),
-		).rejects.toThrow("mixes operators (value) with custom fields (Owner)");
+	it("refuses custom_fields that mix operators with fields, rather than drop either", () => {
+		expect(() =>
+			parsePolicy(
+				ruleText('require: { task: { custom_fields: { present: true, "61": { in: ["71"] } } } }'),
+			),
+		).toThrow(PolicyError);
+		expect(() =>
+			parsePolicy(ruleText('apply: { task: { custom_fields: { value: x, "61": "71" } } }')),
+		).toThrow(PolicyError);
 	});
 
 	it("rejects a date bound that is no date when the policy loads", () => {
@@ -184,24 +197,19 @@ describe("constraint values and member names", () => {
 });
 
 describe("parsePolicy", () => {
-	it("rejects a section name without a project, and a rule without effect", () => {
+	it("rejects a rule without effect, another version and malformed YAML", () => {
 		expect(() =>
-			parsePolicy(
-				"version: 1\nworkspace: x\nrules:\n  - where: { section: Done }\n    allow: [read]\n",
-			),
-		).toThrow(PolicyError);
-		expect(() =>
-			parsePolicy("version: 1\nworkspace: x\nrules:\n  - where: { project: p }\n"),
+			parsePolicy('version: 1\nworkspace: "1"\nrules:\n  - where: { project: "21" }\n'),
 		).toThrow(/allow/u);
-		expect(() => parsePolicy("version: 2\nworkspace: x\nrules: []\n")).toThrow(PolicyError);
+		expect(() => parsePolicy('version: 2\nworkspace: "1"\nrules: []\n')).toThrow(PolicyError);
 		expect(() => parsePolicy("version: [1\n")).toThrow(/invalid YAML/u);
 	});
 
-	it("accepts section gids without a project and lists of references", () => {
+	it("accepts a section without its project and lists of gids", () => {
 		const file = parsePolicy(
-			'version: 1\nworkspace: x\nrules:\n  - where: { section: "123", project: [a, b] }\n    allow: [read]\n',
+			'version: 1\nworkspace: "1"\nrules:\n  - where: { section: "32", project: ["21", "22"] }\n    allow: [read]\n',
 		);
-		expect(file.rules[0]?.where?.project).toStrictEqual(["a", "b"]);
+		expect(file.rules[0]?.where?.project).toStrictEqual(["21", "22"]);
 	});
 });
 
@@ -236,20 +244,19 @@ describe("action patterns", () => {
 		expect(() => expandActionPattern("nonsense")).toThrow(PolicyError);
 	});
 
-	it("lists every object the scopes name, once per rule and member", async () => {
-		const policy = await policyPromise;
-		const named = referencesOf(policy).map((r) => `${r.rule}.${r.member}=${r.gid}`);
+	it("lists every object the scopes name, once per rule and member", () => {
+		const named = referencesOf(policy).map((r) => `${r.rule}.${r.at}=${r.gid}`);
 		expect(named).toStrictEqual([
-			"1.team=11",
-			"2.project=21",
-			"3.project=21",
-			"3.section=32",
-			"4.tag=41",
-			"5.project=22",
-			"6.project=23",
-			"7.assignee=51",
-			"7.custom_field=61",
-			"9.subtree=900",
+			"1.where.team=11",
+			"2.where.project=21",
+			"3.where.project=21",
+			"3.where.section=32",
+			"4.where.tag=41",
+			"5.where.project=22",
+			"6.where.project=23",
+			"7.where.assignee=51",
+			"7.where.custom_field=61",
+			"9.where.subtree=900",
 		]);
 	});
 });

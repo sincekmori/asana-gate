@@ -21,13 +21,13 @@ async function scaffold(): Promise<{ home: string; project: string; managed: str
 		mkdir(join(managed, "managed-settings.d"), { recursive: true }),
 	]);
 	await Promise.all([
-		writeFile(join(home, "settings.yaml"), "log: { level: info }\ncache: { ttl: 1d }\n"),
+		writeFile(join(home, "settings.yaml"), "log: { level: info }\nretries: { maxWait: 9s }\n"),
 		writeFile(
 			join(project, ".asana-gate", "settings.yaml"),
 			"policy: policy.yaml\nconcurrency: { reads: 5 }\nlog: { file: logs/gate.log }\n",
 		),
 		writeFile(join(project, ".asana-gate", "settings.local.yaml"), "log: { level: debug }\n"),
-		writeFile(join(managed, "managed-settings.yaml"), "cache: { enabled: false }\n"),
+		writeFile(join(managed, "managed-settings.yaml"), "retries: { max: 1 }\n"),
 		writeFile(
 			join(managed, "managed-settings.d", "10-writes.yaml"),
 			"concurrency: { writes: 2 }\n",
@@ -49,11 +49,7 @@ describe("settings", () => {
 			level: "error",
 			file: join(project, ".asana-gate", "logs", "gate.log"),
 		});
-		expect(loaded.settings.cache).toStrictEqual({
-			enabled: false,
-			dir: join(home, "cache"),
-			ttl: "1d",
-		});
+		expect(loaded.settings.retries).toStrictEqual({ max: 1, maxWait: "9s" });
 		expect(loaded.settings.concurrency).toStrictEqual({ reads: 5, writes: 2 });
 		expect(loaded.settings.policy).toBe(join(project, ".asana-gate", "policy.yaml"));
 		expect(loaded.projectDir).toBe(project);
@@ -85,13 +81,13 @@ describe("settings", () => {
 			managedDir: managed,
 			env: { ASANA_GATE_LOG_LEVEL: "error" },
 		});
-		expect(loaded.origins.get("cache.enabled")).toBe(join(managed, "managed-settings.yaml"));
+		expect(loaded.origins.get("retries.max")).toBe(join(managed, "managed-settings.yaml"));
 		expect(loaded.origins.get("concurrency.writes")).toBe(
 			join(managed, "managed-settings.d", "10-writes.yaml"),
 		);
 		expect(loaded.origins.get("log.level")).toBe("env");
-		expect(loaded.origins.get("cache.ttl")).toBe(join(home, "settings.yaml"));
-		expect(loaded.origins.get("retries.max")).toBe("defaults");
+		expect(loaded.origins.get("retries.maxWait")).toBe(join(home, "settings.yaml"));
+		expect(loaded.origins.get("mcp.port")).toBe("defaults");
 	});
 
 	it("lets flags beat files and the environment, but never managed settings", async () => {
@@ -101,9 +97,9 @@ describe("settings", () => {
 			home,
 			managedDir: managed,
 			env: { ASANA_GATE_LOG_LEVEL: "error" },
-			flags: { cache: { enabled: true }, log: { level: "silent" } },
+			flags: { retries: { max: 9 }, log: { level: "silent" } },
 		});
-		expect(loaded.settings.cache.enabled).toBe(false);
+		expect(loaded.settings.retries.max).toBe(1);
 		expect(loaded.settings.log.level).toBe("silent");
 		expect(loaded.origins.get("log.level")).toBe("flags");
 	});
@@ -117,7 +113,7 @@ describe("settings", () => {
 		await expect(
 			loadSettings({ cwd: project, home, managedDir: managed, env: {} }),
 		).rejects.toThrow(/token\.command may only be set/u);
-		await writeFile(join(home, "settings.yaml"), "cache: { ttl: soon }\n");
+		await writeFile(join(home, "settings.yaml"), "retries: { maxWait: soon }\n");
 		await expect(loadSettings({ cwd: home, home, managedDir: managed, env: {} })).rejects.toThrow(
 			/settings\.yaml/u,
 		);
@@ -168,16 +164,6 @@ describe("settings", () => {
 			env: {},
 		});
 		expect(loaded.projectDir).toBeUndefined();
-	});
-
-	it("reads ASANA_GATE_CACHE in any case and ignores a spelling it does not know", async () => {
-		const root = await mkdtemp(join(tmpdir(), "asana-gate-env-"));
-		const at = { cwd: root, home: join(root, "home"), managedDir: join(root, "managed") };
-		const off = await loadSettings({ ...at, env: { ASANA_GATE_CACHE: "OFF" } });
-		expect(off.settings.cache.enabled).toBe(false);
-		const unknown = await loadSettings({ ...at, env: { ASANA_GATE_CACHE: "disabled" } });
-		expect(unknown.settings.cache.enabled).toBe(true);
-		expect(unknown.origins.get("cache.enabled")).toBe("defaults");
 	});
 
 	it("fails rather than skip a managed drop-in directory it cannot list", async () => {

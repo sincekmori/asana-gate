@@ -18,6 +18,7 @@ asana-gate turns such sentences into a YAML file and enforces it on every one of
 
 - **The policy is the only source of permissions.** The token's rights are an upper bound; the default is deny.
 - **Invisible, not forbidden.** Objects the policy hides answer exactly like nonexistent gids (a 404 with Asana's own wording), and never appear in lists, searches, typeahead or events.
+- **Judged by what Asana says now.** Between requests the gate keeps nothing of what Asana answered: no cache on disk, none in memory. A task moved out of a project a minute ago is judged where it is.
 - **Every endpoint is covered.** Every operation of Asana's OpenAPI definition is classified. A plain read, update or delete of one object (`GET /tasks/{task_gid}`) is classified from its path; any other operation Asana adds fails the build until it is classified, and the weekly OpenAPI report names every new one for review, so none passes through unreviewed.
 - **MCP as specified.** stdio and Streamable HTTP transports, no client-specific extensions.
 
@@ -46,7 +47,7 @@ The server is listed in the [MCP Registry](https://registry.modelcontextprotocol
    asana-gate init
    ```
 
-3. Edit `.asana-gate/policy.yaml`, then validate it: names are resolved against Asana, every gid the rules name is checked to exist, and the token is checked.
+3. Edit `.asana-gate/policy.yaml`, then validate it: every object the rules name is checked to exist in the workspace, and the token is checked.
 
    ```sh
    asana-gate check
@@ -79,50 +80,54 @@ Each rule has a scope (`where`), the actions it allows or denies there, and opti
 
 ```yaml
 version: 1
-workspace: "1200000000000001" # a gid or a name
+workspace: "1200000000000001" # Acme
 
 rules:
   # No `where`: the whole workspace. Read everything.
   - allow: [read]
 
-  # Everything a team owns is writable (create and update, no delete).
-  - where: { team: "Platform" }
+  # Everything the Platform team owns is writable (create and update, no delete).
+  - where: { team: "1200000000000011" }
     allow: [write]
 
-  # Full task work in one project, plus comments and tags.
+  # Full task work in the Backend project, plus comments and tags.
   - where: { project: "1200000000000123" }
     allow: ["task:*", story:create, tag:apply]
 
   # ...but its Done section is frozen (still visible; deny: ["*"] would hide it).
-  - where: { project: "1200000000000123", section: "Done" }
+  - where: { section: "1200000000000132" }
     deny: [modify]
 
   # Tasks tagged ai-ok may be updated wherever they are already visible.
-  - where: { tag: "ai-ok" }
+  - where: { tag: "1200000000000141" }
     allow: [task:update]
 
-  # Read a project, and update only these task fields in it.
-  - where: { project: "Design System" }
+  # Read the Design System project, and update only these task fields in it.
+  - where: { project: "1200000000000124" }
     allow: [read]
     fields: { task: [completed, assignee, due_on] }
 
-  # Tasks created here get a prefix and a tag, must have a due date,
-  # are capped at 20 an hour, and are deleted only after a person confirms.
-  - where: { project: "AI backlog" }
+  # Tasks created in the AI backlog get a prefix and the ai-generated tag, must have
+  # a due date, are capped at 20 an hour, and are deleted only after a person confirms.
+  - where: { project: "1200000000000125" }
     allow: ["task:*"]
     require: { task: { due_on: true } }
-    apply: { task: { name: { prefix: "[AI] " }, tags: { add: [ai-generated] } } }
+    apply: { task: { name: { prefix: "[AI] " }, tags: { add: ["1200000000000142"] } } }
     limit: { "task:create": { max: 20, per: 1h } }
     confirm: [task:delete]
 
-  # Hide a project completely.
-  - where: { project: "Payroll" }
+  # Hide the Payroll project completely.
+  - where: { project: "1200000000000126" }
     deny: ["*"]
 ```
 
-Names are resolved to gids when the policy loads; an unknown or ambiguous name is an error.
-Gids always work.
-Every scope key accepts one value or a list (any of them matches).
+A policy names every object by its gid, written in quotes.
+A name tells no object from another: two projects may share one, and anybody who may rename a project would decide what a rule covers.
+So a rule holds for the object it was written for, whatever that object is called later, and reading a policy asks nothing of Asana but who the token belongs to and what the workspace is called.
+Say what a gid stands for in a comment.
+The gid of a project, a task, a team, a tag or a portfolio is the number in its Asana URL, and `asana-gate init` lists those of the workspace's teams and projects in the policy it writes; a section, a custom field, an option of one and a user have no such URL, so theirs is read with a request, such as `asana-gate api GET /projects/<gid>/sections`.
+`asana-gate check` fails on a gid that names nothing of the kind a scope or a constraint expects there, on an object of another workspace, and on a value a custom field cannot hold; `asana-gate explain <gid>` tells what a gid names and how the policy treats it.
+Every scope key accepts one gid or a list (any of them matches).
 
 ### Scopes
 
@@ -133,13 +138,13 @@ Every scope key accepts one value or a list (any of them matches).
 | `portfolio`      | the portfolio, its nested portfolios, and every project in them                          | 1     |
 | `unhomed: true`  | tasks that belong to no project (and inherit none from a parent task)                    | 1     |
 | `project`        | the project and everything in it                                                         | 2     |
-| `section`        | a section of the `project` given alongside (a section gid needs no project)              | 3     |
+| `section`        | the section and the tasks in it                                                          | 3     |
 | `subtree`        | a task (gid) and all of its subtasks, recursively                                        | 4     |
 | `task`           | exactly that task (gid)                                                                  | 5     |
 | `tag`            | filter: tasks carrying the tag                                                           | +     |
-| `assignee`       | filter: tasks assigned to `me`, a gid or an email                                        | +     |
-| `custom_field`   | filter: tasks whose field (by name or gid) holds one of the values, e.g. `{ Owner: AI }` | +     |
-| `created_by`     | filter: tasks created by `me`, a gid or an email                                         | +     |
+| `assignee`       | filter: tasks assigned to `me` (the token's user) or to a user's gid                     | +     |
+| `custom_field`   | filter: tasks whose field (by gid) holds one of the values (see below)                   | +     |
+| `created_by`     | filter: tasks created by `me` or by a user's gid                                         | +     |
 | `completed`      | filter: completed (`true`) or open (`false`) tasks                                       | +     |
 | `has_parent`     | filter: subtasks (`true`) or top-level tasks (`false`)                                   | +     |
 | `name`           | filter: tasks whose name satisfies `prefix`, `suffix`, `contains` or `matches` (a regex) | +     |
@@ -150,6 +155,7 @@ Every scope key accepts one value or a list (any of them matches).
 Hierarchy keys in one `where` are ANDed.
 Filters (`tag`, `assignee`, `custom_field` and the state filters below them) are ANDed with the hierarchy keys and never make an object visible on their own: they narrow or widen what may be done with objects that another rule already lets the agent read, and they may hide objects (`deny: [task:read]`).
 For a create request, the filters see the object the request would create: its name after `apply`, the token's user as its creator, its due date and so on.
+A `custom_field` filter is written `{ "<field gid>": <value> }`, and a value is what the field holds: the gid of an option, of a user or of another object for a field that holds objects, and the text Asana displays for one that holds none (a text, a date, a number as its format shows it, such as `5.00`).
 
 Objects that are not tasks live where the object they belong to does.
 Stories, attachments and time entries follow their task (a story on a goal and an attachment on a project brief follow that instead); sections, project briefs, task templates and project memberships follow their project; status updates and memberships follow their project, portfolio or goal, and allocations, budgets and rates their project or portfolio.
@@ -193,7 +199,7 @@ Some verbs are implied by the request body: updating a task's `completed` needs 
 A custom field defined in place where one is put on a project, a portfolio, a goal or a table is created by that request, so it needs `custom_field:create` in the workspace as well, and the constraints on `custom_field` shape the definition.
 One named by gid must be visible to the policy, like any object a request names, to be put on and to be taken off; so must the table a new record goes into, and the tables a record search filters by.
 So must the objects a create or an update sets a `reference` custom field to: a value that names a hidden object is refused with the 404 of one that names nothing.
-Only its definition tells such a field from any other, so the gate reads the definition of each custom field a request sets, and keeps it for half a minute.
+Only its definition tells such a field from any other, so the gate reads the definition of each custom field a request sets, once per request.
 Taking a local field off again (one outside the workspace's library, as a field defined in place on a project is) deletes it, as live checks showed, so that needs `custom_field:delete` as well; a library field needs only `custom_field_setting:delete`.
 
 **Explicit-only actions** move data out of Asana or out of asana-gate's control, so no group or wildcard grants them; a policy must spell them out: `webhook:create`, `webhook:update`, `export:create`, `organization_export:create`, `organization_export:read`, `audit_log:read`.
@@ -214,18 +220,18 @@ A rule may consist of constraints alone, without `allow` or `deny`; its `where` 
 
 ```yaml
 rules:
-  - where: { project: "AI backlog" }
+  - where: { project: "1200000000000125" } # AI backlog
     allow: ["task:*", story:create]
     require:
       task:
         name: { prefix: "[AI] ", max_length: 80 }
         due_on: { present: true, min: today, max: "+30d" }
-        custom_fields: { Owner: { in: [AI] } }
+        custom_fields: { "1200000000000161": { in: ["1200000000000171"] } } # Owner: AI
     apply:
       task:
         name: { prefix: "[AI] " }
-        tags: { add: [ai-generated] }
-        custom_fields: { Owner: AI }
+        tags: { add: ["1200000000000142"] } # ai-generated
+        custom_fields: { "1200000000000161": "1200000000000171" } # Owner: AI
     forbid: { task: [html_notes, followers] }
     redact: { task: [notes] }
     limit: { "task:create": { max: 20, per: 1h } }
@@ -242,9 +248,9 @@ rules:
 | `confirm` | actions                    | actions a person must confirm before they run: 428 when nobody can be asked, 403 when they decline                       |
 
 Members are the request members of Asana's API (`name`, `due_on`, `assignee`, `projects`, `tags`, …); a member Asana does not accept for the resource is an error when the policy loads.
-`custom_fields` nests by field name or gid, and the values of an enum field may be option names or gids; a field named like an operator (`in`, `value`, …) is named by its gid, and operators may not stand beside field names.
-Names in `in`, `not_in` and `apply` values are resolved when the policy loads, like names in `where`: enum option names, tag names (`tags`), users (`me` or an email for `assignee`, `followers`, `owner`), projects and teams.
-A request names them as Asana takes them, by gid (a user also by `me` or an email), so a refusal lists each value with its gid, as in `must be one of AI (1200000000000071)`; `apply` sends the gid.
+`custom_fields` nests by the gid of each field, and a field's values are written as a request sends them: the gid of an option, a text, a number.
+Where a member names objects (`tags`, `projects`, `team`, and the users of `assignee`, `followers` and `owner`), the values of `in`, `not_in` and `apply` are their gids, and a user may be `me`; a name there is an error when the policy loads.
+A request names them as Asana takes them, by gid (a user also by `me` or an email, which the gate turns into the gid before it compares), so a refusal lists the gids, as in `custom_fields.1200000000000161 must be one of 1200000000000171`.
 
 A requirement combines operators, all of which must hold:
 
@@ -254,7 +260,7 @@ A requirement combines operators, all of which must hold:
 | `prefix`, `suffix`, `contains`   | the string must start with, end with or contain the text                                                                                                                                             |
 | `matches`, `not_matches`         | the string must, or must not, match the regular expression                                                                                                                                           |
 | `min_length`, `max_length`       | bounds on the string's length                                                                                                                                                                        |
-| `in`, `not_in`                   | the value, or every element of a list, must (not) be one of these; references compare by gid or name                                                                                                 |
+| `in`, `not_in`                   | the value, or every element of a list, must (not) be one of these; objects compare by gid                                                                                                            |
 | `min`, `max`                     | bounds on a number, or on a date: `YYYY-MM-DD`, ISO 8601, `today`, `now`, `+7d`, `-1d` (a date-only value such as `due_on` is compared by calendar day, and a time without an offset is read as UTC) |
 
 An application is a bare value (a default) or an object of operators:
@@ -293,6 +299,9 @@ Limits count per rule and action inside one gate process, over a sliding window,
    A `reference` custom field that loses a value answers `display_value: null`, because Asana's text for the field names every object it holds.
    This goes for every object that has a place, its own or that of the object it lives in (a project's status update, the story a notification names); an object that lives at workspace level (a task's `assignee` and `tags`, a record a custom field holds) stays where a visible object names it, without the members the policy redacts.
    An object is answered with the fields the request asked for, without those the gate read beside them to judge it; the objects of a list asked for without `opt_fields` carry their `gid` and name, or what tells apart an object that has no name.
+10. Every request is judged by what Asana says while it runs.
+    What the gate learns to place an object (the project a task is in, the parent of a subtask, what a portfolio holds) it asks for once per request and keeps no longer than the request; once a request has written, it asks again for what judges the answer.
+    So a request costs a read for each object it must place beside the request itself: mostly one, none for what the answer carries itself (a task's project, section and team, the ancestors of a subtask), and one listing of each portfolio the policy names, since Asana tells what a portfolio holds and not which portfolios hold a project.
 
 Rule order in the file does not matter.
 `asana-gate explain <gid>` shows how the policy treats one object, which rules decided each action, and the constraints in force on it.
@@ -353,13 +362,12 @@ asana-gate explain <gid>           Show what the policy allows on one object, an
 asana-gate init                    Create the project's .asana-gate directory; --agent claude-code wires Claude Code
 asana-gate token                   Show where the Asana token comes from, or save one (never printed)
 asana-gate settings                Show the settings in force and where each value comes from
-asana-gate cache                   Show or clear the on-disk cache of workspace names
 asana-gate <resource> <verb> …     Operate Asana through the policy
 asana-gate api <METHOD> <path>     Call any Asana REST operation through the policy
 ```
 
 Common options: `-C <dir>` (run as if started in `<dir>`), `--policy <file>` on the commands that read a policy (default: the project's `.asana-gate/policy.yaml`, see [Configuration](#configuration)), `--token-env <NAME>` (default `ASANA_ACCESS_TOKEN`), `--log-level silent|error|warn|info|debug`.
-`check` fails (exit code 1) on a problem, such as an object the policy names that no longer exists, and only warns about the rest.
+`check` fails (exit code 1) on a problem, such as an object the policy names that no longer exists or an option an enum custom field does not have (its options are listed with their gids), and only warns about the rest.
 `init` and `explain` read Asana without the policy's restrictions; they exist to write policies and are not reachable over MCP.
 `explain` also prints the constraints in force on the object.
 
@@ -400,7 +408,7 @@ asana-gate keeps its files the way Claude Code does: a `.asana-gate` directory i
 | Layer                 | Where                                                                                                                                                                                                                                                                                                  | For                                       |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
 | Managed               | `/Library/Application Support/asana-gate/managed-settings.yaml` (macOS), `/etc/asana-gate/managed-settings.yaml` (Linux), `%ProgramData%\asana-gate\managed-settings.yaml` (Windows), plus `managed-settings.d/*.yaml`; `managed-policy.yaml` beside them is a policy every other policy is bounded by | An administrator; nothing overrides these |
-| Flags and environment | `-C`, `--policy`, `--token-env`, `--log-level`; `ASANA_GATE_POLICY`, `ASANA_GATE_LOG_LEVEL`, `ASANA_GATE_CACHE=off`, `ASANA_GATE_HOME`                                                                                                                                                                 | One invocation                            |
+| Flags and environment | `-C`, `--policy`, `--token-env`, `--log-level`; `ASANA_GATE_POLICY`, `ASANA_GATE_LOG_LEVEL`, `ASANA_GATE_HOME`                                                                                                                                                                                         | One invocation                            |
 | Project, personal     | `.asana-gate/settings.local.yaml`                                                                                                                                                                                                                                                                      | You, in this project (ignored by git)     |
 | Project, shared       | `.asana-gate/settings.yaml`                                                                                                                                                                                                                                                                            | Everyone working in the project           |
 | User                  | `~/.asana-gate/settings.yaml`                                                                                                                                                                                                                                                                          | You, in every project                     |
@@ -420,9 +428,6 @@ Every layer may set any of these members, all optional; relative paths are relat
 | `token.file`                                                                    | the project's `.asana-gate/token`, else `~/.asana-gate/token`                                                                               | A file holding the token on its first line                                                                                                                                                                                                            |
 | `log.level`                                                                     | `warn`                                                                                                                                      | `silent`, `error`, `warn`, `info` or `debug`                                                                                                                                                                                                          |
 | `log.file`                                                                      | `~/.asana-gate/logs/asana-gate.log`                                                                                                         | A file log lines are also appended to, created readable by you alone (`check` warns if not), rotated at 10 MB; `null` for none                                                                                                                        |
-| `cache.enabled`                                                                 | `true`                                                                                                                                      | Whether name resolution keeps the workspace's structure on disk between runs                                                                                                                                                                          |
-| `cache.dir`                                                                     | `~/.asana-gate/cache`                                                                                                                       | Where; one subdirectory per token, named by a hash of it                                                                                                                                                                                              |
-| `cache.ttl`                                                                     | `7d`                                                                                                                                        | How long a cached listing is trusted                                                                                                                                                                                                                  |
 | `concurrency.reads`                                                             | `50`                                                                                                                                        | Concurrent GET requests to Asana (its limit)                                                                                                                                                                                                          |
 | `concurrency.writes`                                                            | `15`                                                                                                                                        | Concurrent POST, PUT and DELETE requests (its limit)                                                                                                                                                                                                  |
 | `retries.max`                                                                   | `5`                                                                                                                                         | Retries after a 429, or after a 5xx for anything but a POST, waiting as long as `Retry-After` says                                                                                                                                                    |
@@ -446,14 +451,6 @@ The Personal Access Token is read from the first of these sources, and `asana-ga
 The files are created readable by you alone, and `check` warns when one is not.
 A token file in the project is what hosts without environment variables read, such as Claude Cowork (see [Agents](#agents)).
 
-### Cache
-
-Resolving the names in a policy (teams, projects, sections, tags, custom fields) means listing them, and that is the slow part of starting the gate.
-With the cache on, those listings are kept under `cache.dir` in files only you can read and reused until `cache.ttl` passes; a name missing from a cached listing is looked up live before it counts as unknown, so a project created an hour ago still resolves.
-The cache holds the names and gids of the workspace's structure, never tokens, tasks or comments; what the gate learns about objects while it runs stays in memory.
-Where even that is too much, turn it off in any layer with `cache.enabled: false`, for one run with `ASANA_GATE_CACHE=off`, or for everyone with a managed setting.
-`asana-gate cache` shows the cache and `asana-gate cache clear` deletes every token's listings in it (other files in `cache.dir` stay).
-
 ### Concurrency
 
 The gate sends independent requests at the same time, up to Asana's own limits of 50 reads and 15 writes in flight per token (lower if `concurrency` says so): a page of tasks is checked with one lookup per task at once, the objects a write names are loaded together, and the actions of a `POST /batch` are planned together.
@@ -462,12 +459,11 @@ An agent that needs many objects at once should send one `POST /batch` with up t
 
 ### Noticing failures
 
-The gate degrades rather than stops when its own files fail: a cache directory that cannot be written is left alone after one warning and names are read from Asana each time, and a log file that cannot be opened leaves warnings on stderr only.
-Three things make such a failure visible:
+The gate degrades rather than stops when its own files fail: a log file that cannot be opened leaves warnings on stderr only.
+Two things make a failure visible:
 
 - the warning itself, on stderr and in the log file (`~/.asana-gate/logs/asana-gate.log` by default), where the MCP server's warnings land even when nobody watches its stderr;
-- `asana-gate check`, which probes the cache and log directories, the token file's permissions and every object the policy names, and fails on what is broken;
-- `asana-gate cache`, which shows whether the cache directory is writable.
+- `asana-gate check`, which probes the log file, the token file's permissions and every object the policy names, and fails on what is broken.
 
 ## Keeping up with Asana's API
 
@@ -578,13 +574,12 @@ Some behaviors worth knowing:
 The package also exports the building blocks for other hosts.
 
 ```ts
-import { AsanaClient, AsanaNameResolver, compilePolicy, Gate, loadPolicyFile } from "asana-gate";
+import { AsanaClient, Gate, loadPolicyFile, policyFor } from "asana-gate";
 
 const client = new AsanaClient({ token: process.env.ASANA_ACCESS_TOKEN ?? "" });
-const policy = await compilePolicy(
-  await loadPolicyFile("asana-gate.yaml"),
-  new AsanaNameResolver(client),
-);
+const file = await loadPolicyFile("asana-gate.yaml");
+// All a policy asks of Asana: who the token belongs to, and what its workspace is called.
+const policy = await policyFor(client, [{ file, path: "asana-gate.yaml", role: "project" }]);
 const gate = new Gate({ client, policy });
 
 const response = await gate.execute({

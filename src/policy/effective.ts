@@ -31,7 +31,6 @@ interface EffectiveConstraints {
 	readonly redact: ReadonlyMap<Resource, ReadonlySet<string>>;
 	readonly limits: ReadonlyMap<Action, readonly EffectiveLimit[]>;
 	readonly confirm: ReadonlyMap<Action, readonly CompiledRule[]>;
-	readonly labels: ReadonlyMap<string, string>;
 	/** The rules that contributed, for diagnostics. */
 	readonly rules: readonly CompiledRule[];
 }
@@ -106,7 +105,6 @@ function constraintsFor(policy: Policy, facts: Facts): EffectiveConstraints {
 	const redact = new Map<Resource, Set<string>>();
 	const limits = new Map<Action, EffectiveLimit[]>();
 	const confirm = new Map<Action, CompiledRule[]>();
-	const labels = new Map<string, string>();
 	for (const rule of rules) {
 		const { constraints } = rule;
 		mergeInto(require, constraints.require);
@@ -119,11 +117,8 @@ function constraintsFor(policy: Policy, facts: Facts): EffectiveConstraints {
 		for (const action of constraints.confirm) {
 			confirm.set(action, [...(confirm.get(action) ?? []), rule]);
 		}
-		for (const [key, label] of constraints.labels) {
-			labels.set(key, label);
-		}
 	}
-	return { require, apply, forbid, redact, limits, confirm, labels, rules };
+	return { require, apply, forbid, redact, limits, confirm, rules };
 }
 
 /** Whether any rule of the policy carries constraints (a cheap pre-check). */
@@ -131,12 +126,7 @@ function hasConstraints(policy: Policy): boolean {
 	return policy.rules.some((rule) => rule.constraints !== undefined);
 }
 
-/** The human name of a member key (a custom field by its name), for messages. */
-function labelOf(effective: EffectiveConstraints, key: string): string {
-	return effective.labels.get(key) ?? key;
-}
-
-/** JSON for compiled constraints: a value set as `{ "<gid sent>": "<as written>" }`, a member set as a list, a pattern as written. */
+/** JSON for compiled constraints: a value set or a member set as a list, a pattern as written. */
 const constraintJson = (constraint: unknown): string =>
 	JSON.stringify(constraint, (_key, value: unknown): unknown => {
 		if (value instanceof Map) {
@@ -151,11 +141,11 @@ const constraintJson = (constraint: unknown): string =>
 /**
  * The constraints in force as a policy writes them, for telling an agent
  * what its requests meet: each clause that says something, per resource and
- * member (`custom_fields.<gid>`, named in `labels`) or per action;
+ * member (a custom field as `custom_fields.<gid>`) or per action;
  * `undefined` when none does.
  */
 function writtenConstraints(effective: EffectiveConstraints): Record<string, unknown> | undefined {
-	const { require, apply, forbid, redact, labels } = effective;
+	const { require, apply, forbid, redact } = effective;
 	const limit = new Map(
 		[...effective.limits].map(([action, limits]) => [
 			action,
@@ -163,12 +153,12 @@ function writtenConstraints(effective: EffectiveConstraints): Record<string, unk
 		]),
 	);
 	const confirm = [...effective.confirm.keys()];
-	const clauses = { require, apply, forbid, redact, limit, confirm, labels };
+	const clauses = { require, apply, forbid, redact, limit, confirm };
 	const said = Object.entries(JSON.parse(constraintJson(clauses)) as Record<string, object>).filter(
 		([, clause]) => Object.keys(clause).length > 0,
 	);
 	return said.length === 0 ? undefined : Object.fromEntries(said);
 }
 
-export { constraintJson, constraintsFor, hasConstraints, labelOf, writtenConstraints };
+export { constraintJson, constraintsFor, hasConstraints, writtenConstraints };
 export type { EffectiveConstraints, EffectiveLimit };

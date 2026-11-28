@@ -2,17 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Resource } from "../catalog/resources.ts";
-import type { CompiledWhere, Policy } from "./types.ts";
+import { REFERENCE_MEMBERS } from "./compile-values.ts";
+import type { FieldApplication, FieldRequirement } from "./constraints.ts";
+import type { CompiledConstraints, CompiledWhere, Policy } from "./types.ts";
 
-/** One object a policy's scope names by gid (after names were resolved), and where. */
-interface Reference {
+/** One object a rule names by gid, and where. */
+interface Named {
 	readonly resource: Resource;
 	readonly gid: string;
+	/** Where the rule names it: `where.project`, `apply.task.tags`, … */
+	readonly at: string;
+	/** For a custom field: the values the rule expects it to hold, or sets it to. */
+	readonly values?: readonly string[];
+}
+
+/** An object a policy names, and the rule that does. */
+interface Reference extends Named {
 	/** The rule's index in its policy file, and the file's layer. */
 	readonly rule: number;
 	readonly layer: number;
-	/** The `where` member that names it (`project`, `subtree`, …). */
-	readonly member: string;
 }
 
 /** The `where` members that name objects, the resource each names, and how to read them. */
@@ -30,27 +38,76 @@ const MEMBERS: readonly {
 	{ member: "tag", resource: "tag", of: (where) => where.tags },
 	{ member: "assignee", resource: "user", of: (where) => where.assignees },
 	{ member: "created_by", resource: "user", of: (where) => where.createdBy },
-	{
-		member: "custom_field",
-		resource: "custom_field",
-		of: (where) => where.customFields?.map((predicate) => predicate.fieldGid),
-	},
 ];
 
-/** Every object the policy's scopes name, once per rule and member (a rule's statements share one scope). */
+/** The key of a custom field's constraints: `custom_fields.<gid>`. */
+const FIELD_KEY = "custom_fields.";
+
+/** The objects a scope names. */
+function scoped(where: CompiledWhere): Named[] {
+	const objects = MEMBERS.flatMap(({ member, resource, of }) =>
+		[...(of(where) ?? [])].map((gid): Named => ({ resource, gid, at: `where.${member}` })),
+	);
+	const fields = (where.customFields ?? []).map(({ fieldGid, values }): Named => ({
+		resource: "custom_field",
+		gid: fieldGid,
+		at: "where.custom_field",
+		values: [...values],
+	}));
+	return [...objects, ...fields];
+}
+
+/** What a requirement or an application names values with. */
+type Naming = Pick<FieldRequirement, "in" | "not_in"> &
+	Pick<FieldApplication, "default" | "value" | "add">;
+
+/** The objects one `require` or `apply` block names: custom fields with their values, and the values of the members that name objects. */
+function constrained(
+	clause: string,
+	block: ReadonlyMap<Resource, ReadonlyMap<string, Naming>>,
+): Named[] {
+	return [...block].flatMap(([resource, members]) =>
+		[...members].flatMap(([key, spec]): Named[] => {
+			const at = `${clause}.${resource}`;
+			const values = [
+				...(spec.in ?? []),
+				...(spec.not_in ?? []),
+				spec.default,
+				spec.value,
+				spec.add,
+			]
+				.flat()
+				.filter((value) => value !== undefined)
+				.map(String);
+			if (key.startsWith(FIELD_KEY)) {
+				const gid = key.slice(FIELD_KEY.length);
+				return [{ resource: "custom_field", gid, at: `${at}.custom_fields`, values }];
+			}
+			const named = REFERENCE_MEMBERS.get(key);
+			return named === undefined
+				? []
+				: values.map((gid) => ({ resource: named, gid, at: `${at}.${key}` }));
+		}),
+	);
+}
+
+/** The objects a rule's constraints name. */
+function constraining(constraints: CompiledConstraints | undefined): Named[] {
+	return constraints === undefined
+		? []
+		: [...constrained("require", constraints.require), ...constrained("apply", constraints.apply)];
+}
+
+/** Every object the policy names, once per rule and place (a rule's statements share one scope). */
 function referencesOf(policy: Policy): Reference[] {
 	const references = new Map<string, Reference>();
 	for (const rule of policy.rules) {
-		for (const { member, resource, of } of MEMBERS) {
-			for (const gid of of(rule.where) ?? []) {
-				references.set(`${rule.layer}:${rule.index}:${member}:${gid}`, {
-					resource,
-					gid,
-					rule: rule.index,
-					layer: rule.layer,
-					member,
-				});
-			}
+		for (const named of [...scoped(rule.where), ...constraining(rule.constraints)]) {
+			references.set(`${rule.layer}:${rule.index}:${named.at}:${named.gid}`, {
+				...named,
+				rule: rule.index,
+				layer: rule.layer,
+			});
 		}
 	}
 	return [...references.values()];

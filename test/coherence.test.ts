@@ -6,223 +6,150 @@ import { describe, expect, it } from "vitest";
 import { AsanaClient } from "../src/asana/client.ts";
 import { FactsLoader } from "../src/gate/facts.ts";
 import { PortfolioIndex } from "../src/gate/portfolio-index.ts";
-import { AsanaNameResolver } from "../src/gate/resolver.ts";
 import { compilePolicy } from "../src/policy/compile.ts";
 import { parsePolicy } from "../src/policy/load.ts";
 import { createFakeAsana } from "./helpers/fake-asana.ts";
-import { fakeResolver } from "./helpers/fake-resolver.ts";
-import { data, setupGate } from "./helpers/gate.ts";
+import { data, type Fake, setupGate } from "./helpers/gate.ts";
+import { requests } from "./helpers/requests.ts";
+import { CONTEXT } from "./helpers/world.ts";
 
-type Route = (url: URL) => Response | Promise<Response>;
+type Route = (url: URL) => Response;
 
 const json = (status: number, body: unknown): Response => Response.json(body, { status });
 
-const urlOf = (input: string | URL | Request): URL =>
-	new URL(input instanceof Request ? input.url : input);
-
-/** A client whose fetch answers by path; every request is counted per path. */
-function routed(routes: Record<string, Route>): { client: AsanaClient; calls: string[] } {
-	const calls: string[] = [];
+/** A client whose fetch answers by path, and 404 for any other. */
+function routed(routes: Record<string, Route>): AsanaClient {
 	const fetch: typeof globalThis.fetch = (input) => {
-		const url = urlOf(input);
-		const path = url.pathname.replace(/^\/api\/1\.0/u, "");
-		calls.push(path);
-		const route = routes[path];
+		const url = new URL(input instanceof Request ? input.url : input);
+		const route = routes[url.pathname.replace(/^\/api\/1\.0/u, "")];
 		return Promise.resolve(
 			route === undefined ? json(404, { errors: [{ message: "Not found" }] }) : route(url),
 		);
 	};
-	return { client: new AsanaClient({ token: "t", fetch, maxRetries: 0 }), calls };
+	return new AsanaClient({ token: "t", fetch, maxRetries: 0 });
 }
 
-/** A fetch that answers with `first` once, after `gate` opens, and with `later` from then on. */
-function onceAfter(gate: Promise<boolean>, first: Route, later: Route): Route {
-	let used = false;
-	return async (url) => {
-		const answer = used ? later : first;
-		const wait = used ? Promise.resolve(true) : gate;
-		used = true;
-		await wait;
-		return answer(url);
-	};
-}
+const POLICY = `version: 1\nworkspace: "1"\nrules:\n  - allow: ["*"]\n`;
 
-/** Wraps a fetch so the first request whose path ends with `path` answers only after `gate` opens. */
-function holdingFirst(
-	fetch: typeof globalThis.fetch,
-	path: string,
-	gate: Promise<boolean>,
-): typeof globalThis.fetch {
-	let held = false;
-	return async (input, init) => {
-		const hold = !held && urlOf(input).pathname.endsWith(path);
-		held ||= hold;
-		const answer = await fetch(input, init);
-		await (hold ? gate : Promise.resolve(true));
-		return answer;
-	};
-}
+/** Everything, except what is in the Secret project (23). */
+const SECRET_HIDDEN = `${POLICY}  - where: { project: "23" }\n    deny: ["*"]\n`;
 
-const items = (...gids: string[]): Response =>
-	json(200, { data: gids.map((gid) => ({ gid, resource_type: "project" })) });
+/** Everything, and more for what the Roadmap portfolio (81) holds, so that the portfolio is read. */
+const WITH_PORTFOLIO = `${POLICY}  - where: { portfolio: "81" }\n    confirm: [task:delete]\n`;
 
-/** Everything, except reading the tasks of the Design team's (12) projects. */
-const DESIGN_HIDDEN = `
-version: 1
-workspace: "1"
-rules:
-  - allow: ["*"]
-  - where: { team: Design }
-    deny: [task:read]
-`;
-
-describe("a project write", () => {
-	it("refreshes the facts its tasks took from it (the team their memberships carry)", async () => {
-		const { gate } = await setupGate(DESIGN_HIDDEN);
-		const stories = { method: "GET", path: "/tasks/101/stories" } as const;
-		await expect(gate.execute(stories)).resolves.toMatchObject({ status: 200 });
-		const moved = await gate.execute({
-			method: "PUT",
-			path: "/projects/21",
-			body: { data: { team: "12" } },
-		});
-		expect(moved.status).toBe(200);
-		await expect(gate.execute(stories)).resolves.toMatchObject({ status: 404 });
-	});
-});
-
-describe("portfolio index", () => {
-	it("fails the lookup instead of emptying a portfolio Asana would not list", async () => {
-		const limited = routed({ "/portfolios/91/items": () => json(429, { errors: [] }) });
-		const index = new PortfolioIndex({
-			client: limited.client,
-			roots: new Set(["91"]),
-			ttlMs: 60_000,
-		});
-		await expect(index.containing("21")).rejects.toMatchObject({ status: 429 });
-		const missing = routed({ "/portfolios/91/items": () => json(404, { errors: [] }) });
-		const empty = new PortfolioIndex({
-			client: missing.client,
-			roots: new Set(["91"]),
-			ttlMs: 60_000,
-		});
-		await expect(empty.containing("21")).resolves.toStrictEqual(new Set());
-	});
-
-	it("lists again when the portfolio changes while it is being listed", async () => {
-		const held = Promise.withResolvers<boolean>();
-		const { client } = routed({
-			"/portfolios/91/items": onceAfter(
-				held.promise,
-				() => items("500"),
-				() => items("500", "600"),
-			),
-		});
-		const index = new PortfolioIndex({ client, roots: new Set(["91"]), ttlMs: 60_000 });
-		const lookup = index.containing("600");
-		index.invalidateFor("91");
-		held.resolve(true);
-		await expect(lookup).resolves.toStrictEqual(new Set(["91"]));
-	});
-});
-
-const POLICY = `version: 1\nworkspace: "1"\nrules:\n  - allow: [read]\n`;
-
-/** A loader over `fetch` that derives every fact (the policy reads none of the task's state). */
-async function loaderOver(fetch: typeof globalThis.fetch): Promise<FactsLoader> {
-	const policy = await compilePolicy(parsePolicy(POLICY), fakeResolver);
-	const client = new AsanaClient({ token: "t", fetch, maxRetries: 0 });
+/** A loader over the fake that derives every fact. */
+function loaderOver(fake: Fake): FactsLoader {
+	const policy = compilePolicy(parsePolicy(POLICY), CONTEXT);
+	const client = new AsanaClient({ token: "t", fetch: fake.fetch, maxRetries: 0 });
 	return new FactsLoader({ client, policy, allFacts: true });
 }
 
-describe("facts loader", () => {
-	it("forgets a subtask's inherited placement when its parent is written", async () => {
-		const fake = createFakeAsana();
-		const loader = await loaderOver(fake.fetch);
-		const before = await loader.load("task", "104");
-		expect(before?.facts.branches[0]?.project).toBe("21");
-		// Asana moves the parent behind the gate's back.
-		expect(fake.api("POST", "/tasks/101/removeProject", { project: "21" }).status).toBe(200);
-		expect(fake.api("POST", "/tasks/101/addProject", { project: "22", section: "33" }).status).toBe(
-			200,
-		);
-		loader.invalidate("task", "101");
-		const after = await loader.load("task", "104");
-		expect(after?.facts.branches[0]?.project).toBe("22");
-	});
+/** Moves task 101 from the Backend project (21) to `project`, in Asana itself: the gate is not told. */
+function moveParent(fake: Fake, project: string): void {
+	fake.api("POST", "/tasks/101/removeProject", { project: "21" });
+	fake.api("POST", "/tasks/101/addProject", { project });
+}
 
-	it("judges a subtask's parent by its new placement once the parent is written", async () => {
-		const { fake, gate } = await setupGate(
-			`${POLICY}  - where: { project: "23" }\n    deny: ["*"]\n`,
-		);
+/** How often the gate asked Asana for `path`. */
+const asked = (fake: Fake, path: string): number =>
+	requests(fake).filter((request) => request === path).length;
+
+describe("what a request learns from Asana", () => {
+	it("is gone with it: the next request is judged by what Asana says then", async () => {
+		const { fake, gate } = await setupGate(SECRET_HIDDEN);
 		const created = fake.api("POST", "/tasks", { name: "S", projects: ["21"], parent: "101" });
-		const gid = String(data(created.body).gid);
+		const path = `/tasks/${String(data(created.body).gid)}`;
 		const parentOf = async (): Promise<unknown> => {
-			const response = await gate.execute({ method: "GET", path: `/tasks/${gid}` });
+			const response = await gate.execute({ method: "GET", path });
 			return data(response.body).parent;
 		};
 		await expect(parentOf()).resolves.toMatchObject({ gid: "101" });
-		// Asana moves the parent into a hidden project; the gate learns of the write.
-		expect(fake.api("POST", "/tasks/101/removeProject", { project: "21" }).status).toBe(200);
-		expect(fake.api("POST", "/tasks/101/addProject", { project: "23" }).status).toBe(200);
-		gate.loader.invalidate("task", "101");
+		// Somebody moves the parent into the hidden project.
+		moveParent(fake, "23");
 		await expect(parentOf()).resolves.toBeNull();
 	});
 
-	it("does not keep an object fetched before a write invalidated it", async () => {
+	it("is asked for once, however often the request needs it, until the loader forgets", async () => {
 		const fake = createFakeAsana();
-		const held = Promise.withResolvers<boolean>();
-		const loader = await loaderOver(holdingFirst(fake.fetch, "/tasks/101", held.promise));
-		const stale = loader.load("task", "101");
-		loader.invalidate("task", "101");
-		held.resolve(true);
-		await stale;
-		expect(fake.api("PUT", "/tasks/101", { completed: true }).status).toBe(200);
-		const fresh = await loader.load("task", "101");
-		expect(fresh?.facts.state?.completed).toBe(true);
+		const loader = loaderOver(fake);
+		const first = await loader.load("task", "104");
+		await Promise.all([loader.load("task", "104"), loader.load("task", "104")]);
+		// A subtask's own fetch carries its parent's placement.
+		expect(requests(fake)).toStrictEqual(["GET /tasks/104"]);
+		expect(first?.facts.branches[0]?.project).toBe("21");
+		moveParent(fake, "22");
+		loader.forget();
+		const again = await loader.load("task", "104");
+		expect(again?.facts.branches[0]?.project).toBe("22");
 	});
 
-	it("skips a probe candidate the workspace's plan does not offer", async () => {
-		const { client } = routed({
+	it("is asked for again once the request has written, to judge the answer", async () => {
+		const { fake, gate } = await setupGate(POLICY);
+		const renamed = await gate.execute({
+			method: "PUT",
+			path: "/sections/31",
+			body: { name: "Next" },
+		});
+		expect(renamed.status).toBe(200);
+		// The section is placed by its project, before the write and after it.
+		expect(requests(fake)).toStrictEqual([
+			"GET /sections/31",
+			"GET /projects/21",
+			"PUT /sections/31",
+			"GET /projects/21",
+		]);
+	});
+
+	it("holds a custom field's definition once for a request, in however many actions set the field", async () => {
+		const { fake, gate } = await setupGate(POLICY);
+		const set = (...values: unknown[]): ReturnType<typeof gate.execute> => {
+			const actions = values.map((value) => ({
+				method: "put",
+				relative_path: "/tasks/101",
+				data: { custom_fields: { "61": value } },
+			}));
+			return gate.execute({ method: "POST", path: "/batch", body: { actions } });
+		};
+		// A value that names nothing asks for no definition.
+		await set(null);
+		expect(asked(fake, "GET /custom_fields/61")).toBe(0);
+		// Field 61 takes an option of its own, which only its definition tells from an object's gid.
+		await expect(set("71", "72")).resolves.toMatchObject({ status: 200 });
+		expect(asked(fake, "GET /custom_fields/61")).toBe(1);
+	});
+});
+
+describe("the portfolios a policy names", () => {
+	it("are listed once for a request that places something, and again for the next", async () => {
+		const { fake, gate } = await setupGate(WITH_PORTFOLIO);
+		const tasks = { method: "GET", path: "/projects/21/tasks" } as const;
+		await expect(gate.execute(tasks)).resolves.toMatchObject({ status: 200 });
+		expect(asked(fake, "GET /portfolios/81/items")).toBe(1);
+		await expect(gate.execute(tasks)).resolves.toMatchObject({ status: 200 });
+		expect(asked(fake, "GET /portfolios/81/items")).toBe(2);
+	});
+
+	it("fail the request when Asana would not list one, and are empty when it is not there", async () => {
+		const limited = routed({ "/portfolios/91/items": () => json(429, { errors: [] }) });
+		const roots = new Set(["91"]);
+		await expect(new PortfolioIndex(limited).list(roots)).rejects.toMatchObject({ status: 429 });
+		const missing = routed({ "/portfolios/91/items": () => json(404, { errors: [] }) });
+		const index = await new PortfolioIndex(missing).list(roots);
+		expect(index.containing("21")).toStrictEqual(new Set());
+	});
+});
+
+describe("probing an object of unknown type", () => {
+	it("skips a candidate the workspace's plan does not offer", async () => {
+		const client = routed({
 			"/goals/61": () => json(402, { errors: [{ message: "Payment Required" }] }),
 			"/sections/61": () => json(200, { data: { gid: "61", name: "S", project: { gid: "21" } } }),
 			"/projects/21": () =>
 				json(200, { data: { gid: "21", name: "P", workspace: { gid: "1" }, team: { gid: "11" } } }),
 		});
-		const policy = await compilePolicy(parsePolicy(POLICY), fakeResolver);
+		const policy = compilePolicy(parsePolicy(POLICY), CONTEXT);
 		const loader = new FactsLoader({ client, policy });
 		const found = await loader.probe("61", ["goal", "section"]);
 		expect(found?.type).toBe("section");
-	});
-});
-
-describe("name resolver", () => {
-	it("resolves a custom field gid through the field itself", async () => {
-		const { client, calls } = routed({
-			"/custom_fields/1203": () =>
-				json(200, {
-					data: { gid: "1203", name: "Local", enum_options: [{ gid: "9", name: "A" }] },
-				}),
-		});
-		const field = await new AsanaNameResolver(client).customField("1203", "1");
-		expect(field).toStrictEqual({
-			gid: "1203",
-			name: "Local",
-			enumOptions: [{ gid: "9", name: "A" }],
-		});
-		expect(calls).toStrictEqual(["/custom_fields/1203"]);
-	});
-
-	it("looks a user up once however often the policy names them", async () => {
-		const { client, calls } = routed({
-			"/users/alice%40acme.test": () => json(200, { data: { gid: "77", name: "Alice" } }),
-		});
-		const resolver = new AsanaNameResolver(client);
-		const gids = await Promise.all([
-			resolver.user("alice@acme.test", "1"),
-			resolver.user("alice@acme.test", "1"),
-		]);
-		expect(gids).toStrictEqual(["77", "77"]);
-		expect(calls).toHaveLength(1);
 	});
 });

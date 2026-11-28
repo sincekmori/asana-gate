@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Resource } from "../catalog/resources.ts";
-import { USER_MEMBERS } from "../policy/compile-values.ts";
+import { REFERENCE_MEMBERS } from "../policy/compile-values.ts";
 import {
 	applyApplication,
 	checkRequirement,
 	type FieldRequirement,
 } from "../policy/constraints.ts";
-import { constraintsFor, labelOf } from "../policy/effective.ts";
+import { constraintsFor } from "../policy/effective.ts";
 import type { Facts } from "../policy/evaluate.ts";
 import type { Policy } from "../policy/types.ts";
 import type { FactsLoader } from "./facts.ts";
@@ -62,7 +62,8 @@ interface Shaped {
 
 /** Whether `requirements` compare a user member with sets of users, which hold gids. */
 const comparesUsers = (key: string, requirements: readonly FieldRequirement[]): boolean =>
-	USER_MEMBERS.has(key) && requirements.some((r) => r.in !== undefined || r.not_in !== undefined);
+	REFERENCE_MEMBERS.get(key) === "user" &&
+	requirements.some((r) => r.in !== undefined || r.not_in !== undefined);
 
 /** A user member's value with each user it names (`me`, an email) as their gid; one that names nobody stays. */
 async function withUserGids(value: unknown, loader: ShapeScope["loader"]): Promise<unknown> {
@@ -103,7 +104,7 @@ async function shapeBody(
 	const problems: string[] = [];
 	for (const key of forbidden) {
 		if (readMember(data, key) !== undefined) {
-			problems.push(`${labelOf(effective, key)} may not be set`);
+			problems.push(`${key} may not be set`);
 		}
 	}
 	// A request is compared by the users it names, however it names them.
@@ -115,7 +116,7 @@ async function shapeBody(
 				: member;
 			return requirements.flatMap((requirement) =>
 				checkRequirement(value, requirement, { verb: target.verb }).map(
-					(violation) => `${labelOf(effective, key)} ${violation}`,
+					(violation) => `${key} ${violation}`,
 				),
 			);
 		}),

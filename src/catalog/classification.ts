@@ -151,9 +151,6 @@ async function writeCheck(
 	return { check: verb === "update" ? updateCheck(target, resource, data) : plain, data };
 }
 
-/** Verbs after which the path object's cached facts are still right. */
-const KEEPS_FACTS: ReadonlySet<Verb> = new Set(["read", "create", "manage_members", "reorder"]);
-
 const EVENT_TYPES: readonly Resource[] = ["project", "task", "goal", "portfolio", "section"];
 const WEBHOOK_TYPES: readonly Resource[] = [
 	"project",
@@ -215,7 +212,6 @@ function updateOne(type: Resource): OperationRule {
 			checks: [check],
 			data,
 			response: { kind: "item", type },
-			invalidate: [{ type, gid: target.gid }],
 		};
 	});
 }
@@ -227,7 +223,6 @@ function deleteOne(type: Resource): OperationRule {
 		return {
 			checks: [{ target, actions: [actionOf(type, "delete")] }],
 			response: RAW,
-			invalidate: [{ type, gid: target.gid }],
 		};
 	});
 }
@@ -271,8 +266,7 @@ interface ActOnOptions {
 /**
  * `POST /<type>s/{gid}/<action>`: an action on the path object (optionally of
  * another resource living in it). Creates and updates are shaped by the
- * policy's constraints, and the path object's cached facts are dropped unless
- * the verb leaves them untouched.
+ * policy's constraints.
  */
 function actOn(options: ActOnOptions): OperationRule {
 	const resource = options.resource ?? options.on;
@@ -290,9 +284,6 @@ function actOn(options: ActOnOptions): OperationRule {
 			checks: [check, ...refs],
 			...(data && { data }),
 			response: responseOf(options.response ?? "raw", resource, target.facts),
-			...(!KEEPS_FACTS.has(options.verb) && {
-				invalidate: [{ type: options.on, gid: target.gid }],
-			}),
 		};
 	});
 }
@@ -437,9 +428,6 @@ function onBody(options: OnBodyOptions): OperationRule {
 			checks: [check],
 			...(data && { data }),
 			response: responseOf(options.response, options.resource, sharedFacts(options.shared, target)),
-			...(!KEEPS_FACTS.has(options.verb) && {
-				invalidate: [{ type: target.type, gid: target.gid }],
-			}),
 		};
 	});
 }
@@ -709,7 +697,6 @@ const setParentRule = make({ resource: "task", verb: "set_parent", scope: "path"
 				: []),
 		],
 		response: { kind: "item", type: "task" },
-		invalidate: [{ type: "task", gid: task.gid }],
 	};
 });
 
@@ -729,7 +716,6 @@ const addProjectRule = make(
 				{ target: destination, actions: [actionOf("task", "create")] },
 			],
 			response: RAW,
-			invalidate: [{ type: "task", gid: task.gid }],
 		};
 	},
 );
@@ -771,7 +757,6 @@ const addTaskForSectionRule = make(
 				},
 			],
 			response: RAW,
-			invalidate: [{ type: "task", gid: task.gid }],
 		};
 	},
 );
@@ -1031,7 +1016,6 @@ const batchRule = make({ scope: "batch" }, async (ctx) => {
 		checks: subs.flatMap((sub, unit) => sub.plan.checks.map((check) => ({ ...check, unit }))),
 		data: { ...ctx.body, actions: sent.map((sub) => sub.action) },
 		...(sent.length === 0 && { answer: { data: [] } }),
-		invalidate: subs.flatMap((sub) => sub.plan.invalidate ?? []),
 		response: {
 			kind: "custom",
 			async transform(body): Promise<Record<string, unknown>> {
@@ -1074,7 +1058,6 @@ function updateMovable(type: "project" | "goal"): OperationRule {
 			checks: [check, ...(moves ? [{ target: team, actions: [actionOf(type, "create")] }] : [])],
 			data,
 			response: { kind: "item", type },
-			invalidate: [{ type, gid: target.gid }],
 		};
 	});
 }
@@ -1379,11 +1362,7 @@ function removeCustomFieldSetting(on: Resource): OperationRule {
 				query: {},
 				body: {},
 			});
-			return {
-				...plan,
-				checks: [...plan.checks, ...deleted.checks],
-				invalidate: [...(plan.invalidate ?? []), ...(deleted.invalidate ?? [])],
-			};
+			return { ...plan, checks: [...plan.checks, ...deleted.checks] };
 		},
 	};
 }

@@ -49,7 +49,7 @@ version: 1
 workspace: "1"
 rules:
   - allow: [read]
-  - where: { team: Design }
+  - where: { team: "12" }
     deny: ["*"]
 `;
 

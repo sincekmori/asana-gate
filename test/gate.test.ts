@@ -13,7 +13,7 @@ rules:
   - allow: [read]
   - where: { project: "21" }
     allow: ["task:*", story:create]
-  - where: { project: "21", section: Done }
+  - where: { project: "21", section: "32" }
     deny: [task:update, task:delete, task:complete]
   - where: { project: "23" }
     deny: ["*"]

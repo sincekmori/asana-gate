@@ -19,46 +19,46 @@ import { fieldAllowlist } from "../src/policy/fields.ts";
 import { parsePolicy } from "../src/policy/load.ts";
 import { stateMatches } from "../src/policy/state.ts";
 import { examplePolicy, tagged, taskIn } from "./helpers/example-policy.ts";
-import { fakeResolver } from "./helpers/fake-resolver.ts";
+import { CONTEXT } from "./helpers/world.ts";
 
 const policyPromise = examplePolicy;
 
 describe("evaluation", () => {
-	it("applies the workspace-wide read rule to objects nowhere else mentioned", async () => {
-		const policy = await policyPromise;
+	it("applies the workspace-wide read rule to objects nowhere else mentioned", () => {
+		const policy = policyPromise;
 		expect(isVisible(policy, workspaceFacts("1"), "tag")).toBe(true);
 		expect(isAllowed(policy, workspaceFacts("1"), "tag:create")).toBe(false);
 		expect(isVisible(policy, workspaceFacts("other"), "tag")).toBe(false);
 	});
 
-	it("lets a project-level rule grant the project's verbs", async () => {
-		const policy = await policyPromise;
+	it("lets a project-level rule grant the project's verbs", () => {
+		const policy = policyPromise;
 		expect(isAllowed(policy, taskIn("21", "31"), "task:update")).toBe(true);
 		expect(isAllowed(policy, taskIn("21", "31"), "task:delete")).toBe(true);
 		expect(isAllowed(policy, taskIn("21", "31"), "story:create")).toBe(true);
 	});
 
-	it("lets the more specific section-level deny win over the project-level allow", async () => {
-		const policy = await policyPromise;
+	it("lets the more specific section-level deny win over the project-level allow", () => {
+		const policy = policyPromise;
 		expect(isAllowed(policy, taskIn("21", "32"), "task:update")).toBe(false);
 		expect(isAllowed(policy, taskIn("21", "32"), "task:delete")).toBe(false);
 		expect(isAllowed(policy, taskIn("21", "32"), "task:complete")).toBe(true);
 	});
 
-	it("gives team-level write to projects of the team, nothing more", async () => {
-		const policy = await policyPromise;
+	it("gives team-level write to projects of the team, nothing more", () => {
+		const policy = policyPromise;
 		expect(isAllowed(policy, taskIn("22"), "task:create")).toBe(true);
 		expect(isAllowed(policy, taskIn("22"), "task:delete")).toBe(false);
 	});
 
-	it("hides what a scoped deny-all covers, even from the workspace read", async () => {
-		const policy = await policyPromise;
+	it("hides what a scoped deny-all covers, even from the workspace read", () => {
+		const policy = policyPromise;
 		expect(isVisible(policy, taskIn("23"), "task")).toBe(false);
 		expect(allowedActions(policy, taskIn("23"), "task")).toStrictEqual([]);
 	});
 
-	it("requires every project of a multi-homed task to allow an action", async () => {
-		const policy = await policyPromise;
+	it("requires every project of a multi-homed task to allow an action", () => {
+		const policy = policyPromise;
 		const both: Facts = {
 			...taskIn("21"),
 			branches: [...taskIn("21").branches, ...taskIn("22").branches],
@@ -72,8 +72,8 @@ describe("evaluation", () => {
 		expect(isVisible(policy, withSecret, "task")).toBe(false);
 	});
 
-	it("treats cross-cutting rules as filters ranked by their hierarchy level", async () => {
-		const policy = await policyPromise;
+	it("treats cross-cutting rules as filters ranked by their hierarchy level", () => {
+		const policy = policyPromise;
 		const taggedTask = taskIn("22", undefined, { tags: new Set(["41"]) });
 		expect(isAllowed(policy, taskIn("22"), "task:update")).toBe(true);
 		expect(fieldAllowlist(policy, taskIn("22"), "task")).toStrictEqual(
@@ -87,8 +87,8 @@ describe("evaluation", () => {
 		expect(isVisible(policy, tagged("23", "41"), "task")).toBe(false);
 	});
 
-	it("matches assignee and custom field predicates together, below hierarchical rules", async () => {
-		const policy = await policyPromise;
+	it("matches assignee and custom field predicates together, below hierarchical rules", () => {
+		const policy = policyPromise;
 		const fields: ReadonlyMap<string, ReadonlySet<string>> = new Map([
 			["61", new Set(["71", "AI"])],
 		]);
@@ -113,8 +113,8 @@ describe("evaluation", () => {
 		).toStrictEqual([5]);
 	});
 
-	it("handles unhomed tasks and subtrees", async () => {
-		const policy = await policyPromise;
+	it("handles unhomed tasks and subtrees", () => {
+		const policy = policyPromise;
 		const unhomed: Facts = {
 			workspace: "1",
 			branches: [{ portfolios: EMPTY, taskChain: ["5"], unhomed: true }],
@@ -129,12 +129,12 @@ describe("evaluation", () => {
 		expect(isAllowed(policy, deep, "story:update")).toBe(true);
 	});
 
-	it("never lets a tag, assignee or custom field rule make an object visible, but lets it hide one", async () => {
-		const policy = await compilePolicy(
+	it("never lets a tag, assignee or custom field rule make an object visible, but lets it hide one", () => {
+		const policy = compilePolicy(
 			parsePolicy(
-				'version: 1\nworkspace: Acme\nrules:\n  - where: { tag: ai-ok }\n    allow: [task:read, task:update]\n  - where: { project: "22" }\n    allow: [read]\n  - where: { project: "22", tag: frozen }\n    deny: [task:read]\n',
+				'version: 1\nworkspace: "1"\nrules:\n  - where: { tag: "41" }\n    allow: [task:read, task:update]\n  - where: { project: "22" }\n    allow: [read]\n  - where: { project: "22", tag: "42" }\n    deny: [task:read]\n',
 			),
-			fakeResolver,
+			CONTEXT,
 		);
 		expect(isVisible(policy, tagged("21", "41"), "task")).toBe(false);
 		expect(isVisible(policy, taskIn("22"), "task")).toBe(true);
@@ -142,12 +142,12 @@ describe("evaluation", () => {
 		expect(isVisible(policy, tagged("22", "42"), "task")).toBe(false);
 	});
 
-	it("intersects field allowlists across branches", async () => {
-		const policy = await compilePolicy(
+	it("intersects field allowlists across branches", () => {
+		const policy = compilePolicy(
 			parsePolicy(
-				`version: 1\nworkspace: Acme\nrules:\n  - where: { project: "21" }\n    allow: [read]\n    fields: { task: [name, due_on] }\n  - where: { project: "22" }\n    allow: [read]\n    fields: { task: [due_on] }\n`,
+				`version: 1\nworkspace: "1"\nrules:\n  - where: { project: "21" }\n    allow: [read]\n    fields: { task: [name, due_on] }\n  - where: { project: "22" }\n    allow: [read]\n    fields: { task: [due_on] }\n`,
 			),
-			fakeResolver,
+			CONTEXT,
 		);
 		const both: Facts = {
 			...taskIn("21"),
@@ -157,22 +157,22 @@ describe("evaluation", () => {
 		expect(fieldAllowlist(policy, taskIn("21"), "task")).toStrictEqual(new Set(["name", "due_on"]));
 	});
 
-	it("does not let a `fields` allow narrow an equally specific unrestricted allow", async () => {
-		const policy = await compilePolicy(
+	it("does not let a `fields` allow narrow an equally specific unrestricted allow", () => {
+		const policy = compilePolicy(
 			parsePolicy(
-				`version: 1\nworkspace: Acme\nrules:\n  - where: { project: "21" }\n    allow: [read, task:update]\n  - where: { project: "21" }\n    allow: [read]\n    fields: { task: [completed] }\n`,
+				`version: 1\nworkspace: "1"\nrules:\n  - where: { project: "21" }\n    allow: [read, task:update]\n  - where: { project: "21" }\n    allow: [read]\n    fields: { task: [completed] }\n`,
 			),
-			fakeResolver,
+			CONTEXT,
 		);
 		expect(fieldAllowlist(policy, taskIn("21"), "task")).toBeUndefined();
 	});
 
-	it("lets deny, confirm and limit wildcards cover the explicit-only actions", async () => {
-		const policy = await compilePolicy(
+	it("lets deny, confirm and limit wildcards cover the explicit-only actions", () => {
+		const policy = compilePolicy(
 			parsePolicy(
-				`version: 1\nworkspace: Acme\nrules:\n  - allow: [read, webhook:create, export:create]\n    confirm: ["*"]\n    limit: { "*:create": { max: 1, per: 1h } }\n  - where: { project: "21" }\n    deny: [modify]\n`,
+				`version: 1\nworkspace: "1"\nrules:\n  - allow: [read, webhook:create, export:create]\n    confirm: ["*"]\n    limit: { "*:create": { max: 1, per: 1h } }\n  - where: { project: "21" }\n    deny: [modify]\n`,
 			),
-			fakeResolver,
+			CONTEXT,
 		);
 		expect(isAllowed(policy, taskIn("21"), "webhook:create")).toBe(false);
 		expect(isAllowed(policy, taskIn("22"), "webhook:create")).toBe(true);

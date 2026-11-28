@@ -38,10 +38,6 @@ const COMMANDS: Readonly<Record<string, Runner>> = {
 		const { runSettings } = await import("./config.ts");
 		return runSettings(argv);
 	},
-	async cache(argv) {
-		const { runCache } = await import("./config.ts");
-		return runCache(argv);
-	},
 };
 
 /** The resource commands, one line per noun. */
@@ -70,7 +66,6 @@ Commands:
   init           Create the project's .asana-gate directory; --agent claude-code wires Claude Code
   token          Show where the Asana token comes from, or save one (never printed)
   settings       Show the settings in force and where each value comes from
-  cache          Show or clear the on-disk cache of workspace names
   api            Call any Asana REST operation through the policy
 
 Resources (asana-gate <resource> <verb> …, all through the policy):

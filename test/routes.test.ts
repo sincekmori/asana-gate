@@ -20,7 +20,7 @@ version: 1
 workspace: "1"
 rules:
   - allow: [workspace:read, user:read]
-  - where: { team: Platform }
+  - where: { team: "11" }
     allow: [read]
 `;
 

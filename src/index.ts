@@ -25,10 +25,7 @@ export { FactsLoader } from "./gate/facts.ts";
 export type { FactsLoaderOptions, Loaded } from "./gate/facts.ts";
 export { Gate } from "./gate/gate.ts";
 export type { GateOptions, GateRequest, GateResponse } from "./gate/gate.ts";
-export { FileListingCache } from "./gate/listing-cache.ts";
-export type { ListingCache } from "./gate/listing-cache.ts";
-export { AsanaNameResolver } from "./gate/resolver.ts";
-export type { ResolverOptions } from "./gate/resolver.ts";
+export { policyFor, whoAmI } from "./gate/identity.ts";
 export { matchRoute } from "./gate/router.ts";
 export type { RouteMatch } from "./gate/router.ts";
 export { createLogger, silentLogger } from "./log.ts";
@@ -38,7 +35,7 @@ export { serveHttp, serveOverStdio } from "./mcp/serve.ts";
 export type { HttpOptions, Serving } from "./mcp/serve.ts";
 export { expandActionPattern, expandActionPatterns } from "./policy/actions.ts";
 export { compilePolicies, compilePolicy } from "./policy/compile.ts";
-export type { CustomFieldDefinition, NameResolver, PolicySource } from "./policy/compile.ts";
+export type { PolicyContext, PolicySource } from "./policy/compile.ts";
 export {
 	allowedActions,
 	decide,

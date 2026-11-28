@@ -43,25 +43,6 @@
       },
       "additionalProperties": false
     },
-    "cache": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Whether the names and gids of the workspace's structure are cached on disk between runs"
-        },
-        "dir": {
-          "type": "string",
-          "description": "Where the cache lives; relative to the settings file"
-        },
-        "ttl": {
-          "type": "string",
-          "pattern": "^(?<amount>\\d+)(?<unit>ms|s|m|h|d|w)$",
-          "description": "How long a cached listing is trusted before it is read again"
-        }
-      },
-      "additionalProperties": false
-    },
     "concurrency": {
       "type": "object",
       "properties": {

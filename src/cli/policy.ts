@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Gate } from "../gate/gate.ts";
-import { AsanaNameResolver } from "../gate/resolver.ts";
-import { compilePolicies, type PolicySource } from "../policy/compile.ts";
+import { policyFor } from "../gate/identity.ts";
+import type { PolicySource } from "../policy/compile.ts";
 import { loadPolicyFile } from "../policy/load.ts";
 import type { Policy } from "../policy/types.ts";
 import { POLICY_FILE, PROJECT_DIR } from "../settings/paths.ts";
@@ -12,10 +12,10 @@ import { UsageError } from "./context.ts";
 import type { CommandContext } from "./session.ts";
 
 /**
- * Loads the policy in force and compiles it against Asana: the file the
- * settings name (or found in its conventional place), with the user's own and
- * the administrator's policy files when they exist; every one of them must
- * allow an action for it to be allowed.
+ * Loads the policy in force and compiles it for the token's user: the file
+ * the settings name (or found in its conventional place), with the user's
+ * own and the administrator's policy files when they exist; every one of
+ * them must allow an action for it to be allowed.
  */
 async function loadPolicy(context: CommandContext): Promise<Policy> {
 	const { loaded } = context;
@@ -31,7 +31,7 @@ async function loadPolicy(context: CommandContext): Promise<Policy> {
 	const sources: PolicySource[] = await Promise.all(
 		files.map(async ({ path, role }) => ({ path, role, file: await loadPolicyFile(path) })),
 	);
-	return compilePolicies(sources, new AsanaNameResolver(context.client, { cache: context.cache }));
+	return policyFor(context.client, sources);
 }
 
 /** The gate of a command: the policy compiled, in front of the command's client. */

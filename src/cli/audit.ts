@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { EXPLICIT_ONLY_ACTIONS, verbOf } from "../catalog/resources.ts";
-import type { FactsLoader, Loaded } from "../gate/facts.ts";
+import type { FactsLoader } from "../gate/facts.ts";
+import { type AsanaObject, refsOf, stringOf } from "../gate/objects.ts";
 import { messageOf } from "../log.ts";
 import {
 	type Branch,
@@ -12,7 +13,7 @@ import {
 	workspaceFacts,
 } from "../policy/evaluate.ts";
 import { type Reference, referencesOf } from "../policy/references.ts";
-import { type CompiledRule, type Policy, ruleLabel } from "../policy/types.ts";
+import { type Policy, ruleLabel } from "../policy/types.ts";
 import { exposureOf, statIfPresent, unwritableFile } from "../system.ts";
 import type { CommandContext } from "./session.ts";
 import { tokenFileWarning } from "./token.ts";
@@ -27,11 +28,6 @@ interface Finding {
 
 const problem = (text: string): Finding => ({ level: "problem", text });
 const warning = (text: string): Finding => ({ level: "warning", text });
-
-/** The rules once each: a file rule compiles to statements that share its index and scope. */
-function fileRules(policy: Policy): CompiledRule[] {
-	return [...new Map(policy.rules.map((rule) => [`${rule.layer}:${rule.index}`, rule])).values()];
-}
 
 /** Rules that say less than they seem to. */
 function policyWarnings(policy: Policy): Finding[] {
@@ -70,20 +66,9 @@ function policyWarnings(policy: Policy): Finding[] {
 		if (layer.otherWorkspace !== undefined) {
 			findings.push(
 				warning(
-					`${layer.file} governs workspace "${layer.otherWorkspace}", not ${policy.workspaceName}, so it is not in force`,
+					`${layer.file} governs workspace ${layer.otherWorkspace}, not ${policy.workspaceName} (${policy.workspace}), so it is not in force`,
 				),
 			);
-		}
-	}
-	for (const rule of fileRules(policy)) {
-		for (const predicate of rule.where.customFields ?? []) {
-			for (const value of predicate.unmatched ?? []) {
-				findings.push(
-					warning(
-						`${ruleLabel(policy, rule)}.where.custom_field ${predicate.fieldGid}: "${value}" is not an option of the field`,
-					),
-				);
-			}
 		}
 	}
 	return findings;
@@ -100,66 +85,87 @@ function inRuleProject(policy: Policy, reference: Reference, branches: readonly 
 	);
 }
 
-/** Loads one object a scope names; resolves to why it failed when Asana did not answer it. */
-async function loadOrFailure(
-	loader: FactsLoader,
-	reference: Reference,
-): Promise<Loaded | undefined | string> {
-	try {
-		return await loader.load(reference.resource, reference.gid);
-	} catch (error) {
-		return messageOf(error);
-	}
+/** The policy whose claims are audited, and what reads Asana for it. */
+interface Audit {
+	readonly policy: Policy;
+	readonly loader: FactsLoader;
+	readonly client: CommandContext["client"];
 }
 
-/** Loads every object the scopes name and reports the ones that are gone, elsewhere, or misplaced. */
-async function auditReferences(
-	policy: Policy,
-	loader: FactsLoader,
-): Promise<{ checked: number; findings: Finding[] }> {
-	const references = referencesOf(policy);
-	const objects = await Promise.all(
-		references.map((reference) => loadOrFailure(loader, reference)),
+/**
+ * The `values` custom field `field` cannot hold, each with why: no option of
+ * an enum field, no user of a people field, no object of a type a reference
+ * field takes. A field of any other type holds a text, which nothing checks.
+ */
+async function unheld(audit: Audit, field: string, values: readonly string[]): Promise<string[]> {
+	const definition = await audit.client.get<AsanaObject>(
+		`/custom_fields/${encodeURIComponent(field)}`,
+		{ opt_fields: ["resource_subtype", "enum_options.name"] },
 	);
-	const findings: Finding[] = [];
-	for (const [index, reference] of references.entries()) {
-		const rule = ruleLabel(policy, { index: reference.rule, layer: reference.layer });
-		const at = `${rule}.where.${reference.member} ${reference.gid}`;
-		const loaded = objects[index];
-		if (typeof loaded === "string") {
-			findings.push(problem(`${at}: could not be checked (${loaded})`));
-		} else if (loaded === undefined) {
-			findings.push(problem(`${at}: not found (deleted, or not visible to this token)`));
-		} else if (reference.resource !== "user" && loaded.facts.workspace !== policy.workspace) {
-			findings.push(
-				problem(
-					`${at}: in another workspace (${loaded.facts.workspace}), so the rule never applies`,
-				),
-			);
-		} else if (
-			reference.resource === "section" &&
-			!inRuleProject(policy, reference, loaded.facts.branches)
-		) {
-			findings.push(
-				problem(`${at}: not a section of the rule's project, so the rule never applies`),
-			);
-		}
+	const subtype = stringOf(definition.resource_subtype);
+	if (subtype === "enum" || subtype === "multi_enum") {
+		const options = refsOf(definition.enum_options);
+		const listed = options.map((option) => `${option.gid} ${option.name ?? ""}`).join(", ");
+		return values
+			.filter((value) => !options.some((option) => option.gid === value))
+			.map((value) => `${JSON.stringify(value)} is none of the field's options (${listed})`);
 	}
+	const types =
+		subtype === "people" ? (["user"] as const) : await audit.loader.referenceTypes(field);
+	if (types === undefined) {
+		return [];
+	}
+	// By its gid: Asana also answers a user by `me` or an email, which no field holds.
+	const found = await Promise.all(values.map((value) => audit.loader.probe(value, types)));
+	return values
+		.filter((value, index) => found[index]?.object.gid !== value)
+		.map((value) => `${JSON.stringify(value)} names nothing the field holds`);
+}
+
+/** What is wrong with one object the policy names: gone, elsewhere, misplaced, or unable to hold a value. */
+async function faultsOf(audit: Audit, reference: Reference): Promise<string[]> {
+	const { policy } = audit;
+	const loaded = await audit.loader.load(reference.resource, reference.gid);
+	if (loaded === undefined) {
+		return ["not found (deleted, or not visible to this token)"];
+	}
+	if (reference.resource !== "user" && loaded.facts.workspace !== policy.workspace) {
+		return [`in another workspace (${loaded.facts.workspace}), so the rule never applies`];
+	}
+	if (
+		reference.resource === "section" &&
+		!inRuleProject(policy, reference, loaded.facts.branches)
+	) {
+		return ["not a section of the rule's project, so the rule never applies"];
+	}
+	const { values = [] } = reference;
+	return values.length === 0 ? [] : unheld(audit, reference.gid, values);
+}
+
+/** Checks every object the policy names against Asana, and reports what is wrong with each. */
+async function auditReferences(audit: Audit): Promise<{ checked: number; findings: Finding[] }> {
+	const references = referencesOf(audit.policy);
+	const faults = await Promise.all(
+		references.map(async (reference) => {
+			try {
+				return await faultsOf(audit, reference);
+			} catch (error) {
+				return [`could not be checked (${messageOf(error)})`];
+			}
+		}),
+	);
+	const findings = references.flatMap((reference, index) => {
+		const rule = ruleLabel(audit.policy, { index: reference.rule, layer: reference.layer });
+		return (faults[index] ?? []).map((fault) =>
+			problem(`${rule}.${reference.at} ${reference.gid}: ${fault}`),
+		);
+	});
 	return { checked: references.length, findings };
 }
 
-/** The directories the gate writes to, as the process found them, and the token and log files' permissions. */
+/** The log file as the process found it, and the token and log files' permissions. */
 async function auditEnvironment(context: CommandContext): Promise<Finding[]> {
-	const { settings } = context.loaded;
 	const findings: Finding[] = [];
-	const cacheProblem = await context.cache?.unwritable();
-	if (cacheProblem !== undefined) {
-		findings.push(
-			warning(
-				`cache: ${settings.cache.dir} is not writable (${cacheProblem}); names are read from Asana each run (cache.enabled: false makes that intended)`,
-			),
-		);
-	}
 	// Opening the log stream fails later than it returns, so the file is probed here too.
 	const { file } = context.log;
 	const logProblem =

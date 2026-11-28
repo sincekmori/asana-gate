@@ -186,20 +186,6 @@ describe("the objects a request names", () => {
 		expect(answers.map((answer) => answer.status)).toStrictEqual([404, 404, 404]);
 		expect(fake.calls.filter((call) => call.method === "PUT")).toStrictEqual([]);
 	});
-
-	it("looks a field up once for the requests that set it, and not for a value that names nothing", async () => {
-		const { fake, gate } = await setupGate(POLICY);
-		const set = (value: unknown): ReturnType<typeof gate.execute> =>
-			gate.execute({ method: "PUT", path: "/tasks/101", body: { custom_fields: { "61": value } } });
-		const lookups = (): number =>
-			fake.calls.filter((call) => call.url.pathname.endsWith("/custom_fields/61")).length;
-		await set(null);
-		const before = lookups();
-		// Field 61 takes an option of its own, which only its definition tells from an object's gid.
-		await Promise.all([set("71"), set("72")]);
-		await set("71");
-		expect([before, lookups()]).toStrictEqual([0, 1]);
-	});
 });
 
 describe("references a membership holds", () => {

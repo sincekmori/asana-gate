@@ -29,7 +29,7 @@ interface SettingsLayer {
 /** The settings in force, with where each value came from. */
 interface LoadedSettings {
 	readonly settings: Settings;
-	/** Per dotted key (`cache.ttl`), the source that set it. */
+	/** Per dotted key (`log.level`), the source that set it. */
 	readonly origins: ReadonlyMap<string, string>;
 	readonly home: string;
 	/** Where an administrator's managed settings and policy live. */
@@ -51,11 +51,10 @@ interface LoadOptions {
 	readonly flags?: JsonObject;
 }
 
-/** The settings in force when no layer says otherwise; {@link defaults} adds the log file and the cache directory, which live under the home directory. */
+/** The settings in force when no layer says otherwise; {@link defaults} adds the log file, which lives under the home directory. */
 const DEFAULTS = {
 	token: { env: "ASANA_ACCESS_TOKEN" },
 	log: { level: "warn" },
-	cache: { enabled: true, ttl: "7d" },
 	concurrency: {
 		reads: CLIENT_DEFAULTS.maxConcurrentReads,
 		writes: CLIENT_DEFAULTS.maxConcurrentWrites,
@@ -69,13 +68,12 @@ const DEFAULTS = {
 		allowedHosts: [],
 		authTokenEnv: "ASANA_GATE_MCP_TOKEN",
 	},
-} satisfies Omit<Settings, "cache"> & { cache: Omit<Settings["cache"], "dir"> };
+} satisfies Settings;
 
 function defaults(home: string): Settings {
 	return {
 		...DEFAULTS,
 		log: { ...DEFAULTS.log, file: join(home, "logs", "asana-gate.log") },
-		cache: { ...DEFAULTS.cache, dir: join(home, "cache") },
 	};
 }
 
@@ -90,9 +88,6 @@ function parseLayer(raw: unknown, source: string, base: string): SettingsFile {
 		}),
 		...(typeof values.log?.file === "string" && {
 			log: { ...values.log, file: resolveFrom(base, values.log.file) },
-		}),
-		...(values.cache?.dir !== undefined && {
-			cache: { ...values.cache, dir: resolveFrom(base, values.cache.dir) },
 		}),
 	};
 }
@@ -138,27 +133,13 @@ async function managedLayers(dir: string): Promise<SettingsLayer[]> {
 	return layers.filter((layer) => layer !== undefined);
 }
 
-const OFF = new Set(["0", "false", "off", "no"]);
-const ON = new Set(["1", "true", "on", "yes"]);
-
-/** `ASANA_GATE_CACHE` as a switch, whatever its case; an unknown spelling leaves the settings alone. */
-function cacheSwitch(value: string | undefined): boolean | undefined {
-	const word = value?.trim().toLowerCase() ?? "";
-	if (OFF.has(word)) {
-		return false;
-	}
-	return ON.has(word) ? true : undefined;
-}
-
 /** The layer the environment variables make. */
 function envLayer(env: NodeJS.ProcessEnv, cwd: string): SettingsLayer {
 	const policy = envValue(env, "ASANA_GATE_POLICY");
 	const level = envValue(env, "ASANA_GATE_LOG_LEVEL");
-	const cache = cacheSwitch(envValue(env, "ASANA_GATE_CACHE"));
 	const raw = {
 		...(policy !== undefined && { policy }),
 		...(level !== undefined && { log: { level } }),
-		...(cache !== undefined && { cache: { enabled: cache } }),
 	};
 	return { source: "env", values: parseLayer(raw, "environment", cwd) };
 }

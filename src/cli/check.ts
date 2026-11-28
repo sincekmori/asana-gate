@@ -4,7 +4,6 @@
 import { parseArgs } from "node:util";
 
 import { FactsLoader } from "../gate/facts.ts";
-import { cacheEntries } from "../gate/listing-cache.ts";
 import {
 	type CompiledConstraints,
 	type CompiledRule,
@@ -21,33 +20,31 @@ import { createContext } from "./session.ts";
 
 const USAGE = `Usage: asana-gate check [options]
 
-Validate the settings and the policy: the token works, every name resolves,
-every gid the rules name still exists in the workspace, and the cache and log
-directories can be written. Problems make the command fail (exit code 1);
-warnings do not.
+Validate the settings and the policy: the token works, every object the
+rules name by gid exists in the workspace, every custom field can hold the
+values written for it, and the log directory can be written. Problems make
+the command fail (exit code 1); warnings do not.
 
 Options:
 ${usageRows(COMMON_OPTIONS)}`;
 
-/** `resource.member` for every member a per-resource map or set names, with custom fields by name. */
+/** `resource.member` for every member a per-resource map or set names. */
 function membersOf(
-	labels: ReadonlyMap<string, string>,
 	byResource: ReadonlyMap<string, ReadonlyMap<string, unknown> | ReadonlySet<string>>,
 ): string[] {
 	return [...byResource].flatMap(([resource, members]) =>
-		[...(members instanceof Set ? members : members.keys())].map((key: string) => {
-			const label = labels.get(key);
-			return label === undefined ? `${resource}.${key}` : `${resource} ${label}`;
-		}),
+		[...(members instanceof Set ? members : members.keys())].map(
+			(key: string) => `${resource}.${key}`,
+		),
 	);
 }
 
 function describeConstraints(constraints: CompiledConstraints): string {
 	const clauses: [string, string[]][] = [
-		["require", membersOf(constraints.labels, constraints.require)],
-		["apply", membersOf(constraints.labels, constraints.apply)],
-		["forbid", membersOf(constraints.labels, constraints.forbid)],
-		["redact", membersOf(constraints.labels, constraints.redact)],
+		["require", membersOf(constraints.require)],
+		["apply", membersOf(constraints.apply)],
+		["forbid", membersOf(constraints.forbid)],
+		["redact", membersOf(constraints.redact)],
 		["limit", [...constraints.limit].map(([action, l]) => `${action} ${l.max} per ${l.per}`)],
 		["confirm", [...constraints.confirm]],
 	];
@@ -71,8 +68,8 @@ function describeRule(policy: Policy, rule: CompiledRule): string {
 	return `  ${ruleLabel(policy, rule)} ${rule.effect.padEnd(5)} level ${rule.specificity.level}.${rule.specificity.cross}  where ${where}\n           ${shown}`;
 }
 
-/** A policy that names something Asana does not have is a problem `check` reports (exit 1), not a usage error. */
-function unresolved(error: unknown): undefined {
+/** A policy that cannot hold, such as one for a workspace Asana does not show, is a problem `check` reports (exit 1), not a usage error. */
+function unloadable(error: unknown): undefined {
 	if (!(error instanceof PolicyError)) {
 		throw error;
 	}
@@ -87,19 +84,17 @@ async function runCheck(argv: readonly string[], version: string): Promise<numbe
 		return 0;
 	}
 	const context = await createContext(values);
-	const policy = await loadPolicy(context).catch(unresolved);
+	const policy = await loadPolicy(context).catch(unloadable);
 	if (policy === undefined) {
 		return 1;
 	}
 	const { settings, projectDir } = context.loaded;
 	const loader = new FactsLoader({ client: context.client, policy, logger: context.logger });
-	const [references, environment, agent, listings] = await Promise.all([
-		auditReferences(policy, loader),
+	const [references, environment, agent] = await Promise.all([
+		auditReferences({ policy, loader, client: context.client }),
 		auditEnvironment(context),
 		projectDir === undefined ? [] : auditAgentFiles(projectDir, version),
-		settings.cache.enabled ? cacheEntries(settings.cache.dir) : 0,
 	]);
-	const cache = settings.cache.enabled ? `${settings.cache.dir} (${listings} listings)` : "off";
 	console.log(`policy:     ${settings.policy ?? "?"}`);
 	for (const layer of policy.layers) {
 		if (layer.otherWorkspace === undefined && layer.file !== settings.policy) {
@@ -108,7 +103,6 @@ async function runCheck(argv: readonly string[], version: string): Promise<numbe
 	}
 	console.log(`workspace:  ${policy.workspaceName} (${policy.workspace})`);
 	console.log(`token:      ${describeUser(policy.me)} from ${context.token.source}`);
-	console.log(`cache:      ${cache}`);
 	console.log(`log:        ${context.log.file ?? "stderr only"}`);
 	console.log(`rules:      ${policy.rules.length} compiled statements`);
 	for (const rule of policy.rules) {

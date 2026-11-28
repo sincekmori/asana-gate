@@ -9,10 +9,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { auditEnvironment, auditReferences } from "../src/cli/audit.ts";
 import { main } from "../src/cli/main.ts";
-import type { FactsLoader } from "../src/gate/facts.ts";
 import { compilePolicy } from "../src/policy/compile.ts";
 import { parsePolicy } from "../src/policy/load.ts";
-import { fakeResolver } from "./helpers/fake-resolver.ts";
+import { CONTEXT } from "./helpers/world.ts";
 
 const POLICY = `
 version: 1
@@ -25,7 +24,6 @@ rules:
 /** The findings of the environment audit over a log file and a token file in `dir`. */
 async function environmentFindings(dir: string): Promise<string[]> {
 	const context = {
-		loaded: { settings: { cache: { dir } } },
 		log: { file: join(dir, "asana-gate.log") },
 		token: { token: "t", source: "file", file: join(dir, "token"), mode: 0o644 },
 	} as unknown as Parameters<typeof auditEnvironment>[0];
@@ -60,11 +58,12 @@ describe("check and exit codes", () => {
 	);
 
 	it("reports an object it could not load as a problem rather than failing", async () => {
-		const policy = await compilePolicy(parsePolicy(POLICY), fakeResolver);
-		const loader = {
-			load: () => Promise.reject(new Error("Asana answered 503")),
-		} as unknown as FactsLoader;
-		await expect(auditReferences(policy, loader)).resolves.toStrictEqual({
+		const policy = compilePolicy(parsePolicy(POLICY), CONTEXT);
+		const audit = {
+			policy,
+			loader: { load: () => Promise.reject(new Error("Asana answered 503")) },
+		} as unknown as Parameters<typeof auditReferences>[0];
+		await expect(auditReferences(audit)).resolves.toStrictEqual({
 			checked: 1,
 			findings: [
 				{

@@ -17,7 +17,7 @@ import { fieldAllowlist } from "../src/policy/fields.ts";
 import { parsePolicy } from "../src/policy/load.ts";
 import { type Policy, ruleLabel } from "../src/policy/types.ts";
 import { EXAMPLE, taskIn } from "./helpers/example-policy.ts";
-import { fakeResolver } from "./helpers/fake-resolver.ts";
+import { CONTEXT } from "./helpers/world.ts";
 
 /** A bound on the example policy: no deletes, Backend read-only but for completing in Done, one field in Design System. */
 const USER = `
@@ -27,7 +27,7 @@ rules:
   - deny: [task:delete]
   - where: { project: "21" }
     deny: [modify]
-  - where: { project: "21", section: "Done" }
+  - where: { project: "21", section: "32" }
     allow: [task:complete]
   - where: { project: "22" }
     allow: [task:update]
@@ -35,15 +35,15 @@ rules:
   - confirm: [task:create]
 `;
 
-const ALL_READ = "version: 1\nworkspace: Acme\nrules: [{ allow: [read] }]\n";
+const ALL_READ = "version: 1\nworkspace: '1'\nrules: [{ allow: [read] }]\n";
 const ALL_READ_BOUND = "version: 1\nrules: [{ allow: [read] }]\n";
-const TASK_READ = "version: 1\nworkspace: Acme\nrules: [{ allow: [task:read] }]\n";
+const TASK_READ = "version: 1\nworkspace: '1'\nrules: [{ allow: [task:read] }]\n";
 const TASK_READ_BOUND = "version: 1\nrules: [{ allow: [task:read] }]\n";
-const TEAM_READ = "version: 1\nworkspace: Acme\nrules: [{ allow: [team:read] }]\n";
+const TEAM_READ = "version: 1\nworkspace: '1'\nrules: [{ allow: [team:read] }]\n";
 
 const BASE_WITH_APPLY = `
 version: 1
-workspace: Acme
+workspace: "1"
 rules:
   - allow: [read]
   - where: { project: "21" }
@@ -67,7 +67,7 @@ const source = (text: string, role: PolicySource["role"], path = `${role}.yaml`)
 /** The example policy bounded by {@link USER}. */
 const bounded = compilePolicies(
 	[source(EXAMPLE, "project", "policy.yaml"), source(USER, "user")],
-	fakeResolver,
+	CONTEXT,
 );
 
 const confirmers = (policy: Policy, facts: Facts, action: "task:create"): string[] =>
@@ -77,8 +77,8 @@ const appliedTo = (policy: Policy, facts: Facts): string =>
 	JSON.stringify([...(constraintsFor(policy, facts).apply.get("task") ?? [])]);
 
 /** What `check` warns about a policy made of the one project file `text`. */
-async function warningsOf(text: string): Promise<string[]> {
-	const policy = await compilePolicies([source(text, "project")], fakeResolver);
+function warningsOf(text: string): string[] {
+	const policy = compilePolicies([source(text, "project")], CONTEXT);
 	return policyWarnings(policy).map((finding) => finding.text);
 }
 
@@ -87,9 +87,9 @@ const EVERYWHERE = '  - allow: ["section:*"]\n';
 const IN_BACKEND = '  - where: { project: "21" }\n';
 
 /** Whether a policy made of the one project file with `rules` could ever allow deleting a section. */
-async function grantsDelete(rules: string): Promise<boolean> {
-	const text = `version: 1\nworkspace: Acme\nrules:\n${rules}`;
-	const policy = await compilePolicies([source(text, "project")], fakeResolver);
+function grantsDelete(rules: string): boolean {
+	const text = `version: 1\nworkspace: "1"\nrules:\n${rules}`;
+	const policy = compilePolicies([source(text, "project")], CONTEXT);
 	return grantedActions(policy).has("section:delete");
 }
 
@@ -103,24 +103,24 @@ const readable = (policy: Policy): string =>
 		.join(",");
 
 describe("policy files bound each other", () => {
-	it("allows what every file allows: the narrower read wins whichever file holds it", async () => {
-		const first = await compilePolicies(
+	it("allows what every file allows: the narrower read wins whichever file holds it", () => {
+		const first = compilePolicies(
 			[source(ALL_READ, "project"), source(TASK_READ_BOUND, "user")],
-			fakeResolver,
+			CONTEXT,
 		);
-		const second = await compilePolicies(
+		const second = compilePolicies(
 			[source(TASK_READ, "project"), source(ALL_READ_BOUND, "user")],
-			fakeResolver,
+			CONTEXT,
 		);
 		expect(readable(first)).toBe("task");
 		expect(readable(second)).toBe("task");
 		expect([...grantedActions(first)]).toStrictEqual(["task:read"]);
 	});
 
-	it("allows nothing when the files allow nothing in common", async () => {
-		const policy = await compilePolicies(
+	it("allows nothing when the files allow nothing in common", () => {
+		const policy = compilePolicies(
 			[source(TEAM_READ, "project"), source(TASK_READ_BOUND, "user")],
-			fakeResolver,
+			CONTEXT,
 		);
 		expect(readable(policy)).toBe("");
 		expect(grantedActions(policy).size).toBe(0);
@@ -129,40 +129,38 @@ describe("policy files bound each other", () => {
 		);
 	});
 
-	it("does not count as granted what a deny over the same scope takes back", async () => {
+	it("does not count as granted what a deny over the same scope takes back", () => {
 		// In one rule, or in two over the same scope however each names it, the deny wins wherever the allow applies.
-		await expect(grantsDelete(`${EVERYWHERE}    deny: [section:delete]\n`)).resolves.toBe(false);
-		await expect(grantsDelete(`${EVERYWHERE}  - deny: [section:delete]\n`)).resolves.toBe(false);
-		await expect(
+		expect(grantsDelete(`${EVERYWHERE}    deny: [section:delete]\n`)).toBe(false);
+		expect(grantsDelete(`${EVERYWHERE}  - deny: [section:delete]\n`)).toBe(false);
+		expect(
 			grantsDelete(
-				`${IN_BACKEND}    allow: ["section:*"]\n  - where: { project: Backend }\n    deny: [section:delete]\n`,
+				`${IN_BACKEND}    allow: ["section:*"]\n  - where: { project: "21" }\n    deny: [section:delete]\n`,
 			),
-		).resolves.toBe(false);
+		).toBe(false);
 		// The user's file denies deleting tasks everywhere, so the files together never allow it.
-		expect(grantedActions(await bounded).has("task:delete")).toBe(false);
+		expect(grantedActions(bounded).has("task:delete")).toBe(false);
 	});
 
-	it("counts as granted what a deny over another scope leaves standing", async () => {
+	it("counts as granted what a deny over another scope leaves standing", () => {
 		// A narrower allow grants the action again, and a narrower deny leaves the wider allow elsewhere.
-		await expect(
+		expect(
 			grantsDelete(
 				`${EVERYWHERE}  - deny: [section:delete]\n${IN_BACKEND}    allow: [section:delete]\n`,
 			),
-		).resolves.toBe(true);
-		await expect(
-			grantsDelete(`${EVERYWHERE}${IN_BACKEND}    deny: [section:delete]\n`),
-		).resolves.toBe(true);
+		).toBe(true);
+		expect(grantsDelete(`${EVERYWHERE}${IN_BACKEND}    deny: [section:delete]\n`)).toBe(true);
 	});
 
-	it("does not count as granted a read that only a filter allows, which never decides one", async () => {
+	it("does not count as granted a read that only a filter allows, which never decides one", () => {
 		const text =
-			"version: 1\nworkspace: Acme\nrules:\n  - where: { tag: ai-ok }\n    allow: [task:read, task:update]\n";
-		const policy = await compilePolicies([source(text, "project")], fakeResolver);
+			"version: 1\nworkspace: '1'\nrules:\n  - where: { tag: '41' }\n    allow: [task:read, task:update]\n";
+		const policy = compilePolicies([source(text, "project")], CONTEXT);
 		expect([...grantedActions(policy)]).toStrictEqual(["task:update"]);
 	});
 
-	it("lets each file decide by its own most specific rule before the answers are combined", async () => {
-		const policy = await bounded;
+	it("lets each file decide by its own most specific rule before the answers are combined", () => {
+		const policy = bounded;
 		expect(isAllowed(policy, taskIn("21", "31"), "task:delete")).toBe(false);
 		expect(isAllowed(policy, taskIn("21", "31"), "task:update")).toBe(false);
 		expect(isAllowed(policy, taskIn("21", "31"), "task:complete")).toBe(false);
@@ -170,54 +168,54 @@ describe("policy files bound each other", () => {
 		expect(isVisible(policy, taskIn("23"), "task")).toBe(false);
 	});
 
-	it("intersects the updatable members and adds up the constraints", async () => {
-		const policy = await bounded;
+	it("intersects the updatable members and adds up the constraints", () => {
+		const policy = bounded;
 		expect(fieldAllowlist(policy, taskIn("22"), "task")).toStrictEqual(new Set(["completed"]));
 		expect(fieldAllowlist(policy, taskIn("21"), "task")).toBeUndefined();
 		expect(confirmers(policy, taskIn("21"), "task:create")).toStrictEqual(["user rules[5]"]);
 		expect(describeLayers(policy)).toStrictEqual(["user:", "project:"]);
 	});
 
-	it("lets the stronger file win an apply at equal specificity", async () => {
-		const policy = await compilePolicies(
+	it("lets the stronger file win an apply at equal specificity", () => {
+		const policy = compilePolicies(
 			[
 				source(BASE_WITH_APPLY, "project"),
 				source(applying("user"), "user"),
 				source(applying("managed"), "managed"),
 			],
-			fakeResolver,
+			CONTEXT,
 		);
 		expect(appliedTo(policy, taskIn("21"))).toContain("[managed] ");
 		expect(appliedTo(policy, taskIn("21"))).not.toContain("[user] ");
 		expect(policy.layers.map((layer) => layer.role)).toStrictEqual(["user", "project", "managed"]);
 	});
 
-	it("keeps a file that names another workspace out of force, even one this token cannot see", async () => {
-		const policy = await compilePolicies(
+	it("keeps a file that names another workspace out of force, even one this token cannot see", () => {
+		const policy = compilePolicies(
 			[
 				source(EXAMPLE, "project"),
-				source('version: 1\nworkspace: Beta\nrules: [{ deny: ["*"] }]\n', "user"),
+				source('version: 1\nworkspace: "2"\nrules: [{ deny: ["*"] }]\n', "user"),
 				source('version: 1\nworkspace: "1"\nrules: [{ allow: ["*"] }]\n', "managed"),
 			],
-			fakeResolver,
+			CONTEXT,
 		);
-		expect(describeLayers(policy)).toStrictEqual(["user:Beta", "project:", "managed:"]);
+		expect(describeLayers(policy)).toStrictEqual(["user:2", "project:", "managed:"]);
 		expect(isAllowed(policy, taskIn("21"), "task:update")).toBe(true);
 		expect(policyWarnings(policy).map((finding) => finding.text)).toContain(
-			'user.yaml governs workspace "Beta", not Acme, so it is not in force',
+			"user.yaml governs workspace 2, not Acme (1), so it is not in force",
 		);
 	});
 
-	it("warns when the workspace itself cannot be read, which requests starting from it need", async () => {
+	it("warns when the workspace itself cannot be read, which requests starting from it need", () => {
 		const unreadable =
 			"workspace:read is not allowed at workspace level, so the requests that start from the workspace (workspace-wide lists and searches, typeahead, users) answer 404";
-		await expect(warningsOf(TASK_READ)).resolves.toContain(unreadable);
-		await expect(warningsOf(ALL_READ)).resolves.not.toContain(unreadable);
+		expect(warningsOf(TASK_READ)).toContain(unreadable);
+		expect(warningsOf(ALL_READ)).not.toContain(unreadable);
 	});
 
-	it("insists that the first policy file names its workspace", async () => {
-		await expect(
-			compilePolicies([source("version: 1\nrules: []\n", "project", "p.yaml")], fakeResolver),
-		).rejects.toThrow("p.yaml: this policy must name its workspace");
+	it("insists that the first policy file names its workspace", () => {
+		expect(() =>
+			compilePolicies([source("version: 1\nrules: []\n", "project", "p.yaml")], CONTEXT),
+		).toThrow("p.yaml: this policy must name its workspace");
 	});
 });

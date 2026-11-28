@@ -70,22 +70,15 @@ describe("a GET by gid", () => {
 			notes: "",
 			memberships: [{ project: { gid: "21", name: "Backend" } }],
 		});
-		// The task is read once; the project and the section its memberships name are checked like any reference.
-		expect(requests(fake)).toStrictEqual([
-			"GET /tasks/101",
-			"GET /projects/21",
-			"GET /sections/31",
-		]);
+		// The task is read once: the project and the section its memberships name are judged
+		// by the facts the task was judged by, which tell where they are.
+		expect(requests(fake)).toStrictEqual(["GET /tasks/101"]);
 	});
 
 	it("fetches the project's team the whole object lacks", async () => {
 		const { fake, gate } = await setupGate(TEAM_POLICY);
 		await gate.execute({ method: "GET", path: "/tasks/101" });
-		expect(requests(fake)).toStrictEqual([
-			"GET /tasks/101",
-			"GET /projects/21",
-			"GET /sections/31",
-		]);
+		expect(requests(fake)).toStrictEqual(["GET /tasks/101", "GET /projects/21"]);
 	});
 
 	it("fetches a subtask's parent once, to place it and to check the reference", async () => {
@@ -228,5 +221,63 @@ rules:
 		expect(batch?.body).toMatchObject({
 			actions: [{ method: "put", relative_path: "/tasks/101" }],
 		});
+	});
+});
+
+/** Everything is readable, but no project whose name starts with "Back" (project 21 is Backend). */
+const NAMED_HIDDEN = `
+version: 1
+workspace: "1"
+rules:
+  - allow: [read]
+  - where: { name: { prefix: "Back" } }
+    deny: [project:read]
+`;
+
+/** What GET /tasks/{gid} shows of the task's memberships when asked for `fields`. */
+async function membershipsOf(gate: Gate, gid: string, fields: string): Promise<unknown> {
+	const response = await gate.execute({
+		method: "GET",
+		path: `/tasks/${gid}`,
+		query: { opt_fields: fields },
+	});
+	return data(response.body).memberships;
+}
+
+describe("the project and the section a task is in", () => {
+	it("are judged by what placed the task, their names read from the answer, without a request for either", async () => {
+		const { fake, gate } = await setupGate(NAMED_HIDDEN);
+		const fields = "memberships.project.name,memberships.section.name";
+		await expect(membershipsOf(gate, "101", fields)).resolves.toMatchObject([
+			{ project: null, section: { gid: "31", name: "Backlog" } },
+		]);
+		await expect(membershipsOf(gate, "107", fields)).resolves.toMatchObject([
+			{ project: { gid: "22", name: "Design System" }, section: { gid: "33", name: "Inbox" } },
+		]);
+		expect(requests(fake)).toStrictEqual(["GET /tasks/101", "GET /tasks/107"]);
+	});
+
+	it("are read from Asana when the answer carries no name to judge them by", async () => {
+		const { fake, gate } = await setupGate(NAMED_HIDDEN);
+		await expect(
+			membershipsOf(gate, "101", "memberships.project.resource_type"),
+		).resolves.toMatchObject([{ project: null }]);
+		expect(requests(fake)).toStrictEqual(["GET /tasks/101", "GET /projects/21"]);
+	});
+
+	it("cost the items of a list no request either", async () => {
+		const { fake, gate } = await setupGate(NAMED_HIDDEN);
+		const response = await gate.execute({
+			method: "GET",
+			path: "/projects/22/tasks",
+			query: { opt_fields: "memberships.project.name,memberships.section.name" },
+		});
+		expect(items(response.body)).toMatchObject([
+			{
+				gid: "107",
+				memberships: [{ project: { name: "Design System" }, section: { name: "Inbox" } }],
+			},
+		]);
+		expect(requests(fake)).toStrictEqual(["GET /projects/22", "GET /projects/22/tasks"]);
 	});
 });

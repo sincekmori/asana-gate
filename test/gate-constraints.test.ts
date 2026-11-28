@@ -3,8 +3,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fakeResolver } from "./helpers/fake-resolver.ts";
 import { data, message, setupGate } from "./helpers/gate.ts";
+import { CONTEXT } from "./helpers/world.ts";
 
 const POLICY = `
 version: 1
@@ -17,12 +17,12 @@ rules:
       task:
         name: { prefix: "[AI] ", max_length: 40 }
         due_on: { present: true, min: "2026-01-01" }
-        custom_fields: { Owner: { in: [AI] } }
+        custom_fields: { "61": { in: ["71"] } }
     apply:
       task:
         name: { prefix: "[AI] " }
         tags: { add: ["41"] }
-        custom_fields: { Owner: AI }
+        custom_fields: { "61": "71" }
     forbid: { task: [html_notes] }
     limit: { "task:create": { max: 2, per: 1h } }
     confirm: [task:delete]
@@ -58,7 +58,7 @@ describe("constraints in the gate", () => {
 		expect(sent?.body).toMatchObject({ custom_fields: { "61": "71" } });
 	});
 
-	it("takes the enum option by the gid Asana takes, naming it where the name is sent", async () => {
+	it("takes the enum option by the gid Asana takes, and refuses its name", async () => {
 		const { fake, gate } = await setup();
 		const created = (owner: string): ReturnType<typeof gate.execute> =>
 			gate.execute({
@@ -69,7 +69,7 @@ describe("constraints in the gate", () => {
 		await expect(created("71")).resolves.toMatchObject({ status: 201 });
 		const named = await created("AI");
 		expect(named.status).toBe(400);
-		expect(message(named.body)).toContain('custom field "Owner" must be one of AI (71)');
+		expect(message(named.body)).toContain("custom_fields.61 must be one of 71");
 		expect(fake.calls.filter((call) => call.method === "POST")).toHaveLength(1);
 	});
 
@@ -105,7 +105,7 @@ describe("constraints in the gate", () => {
 			path: "/tasks",
 			body: { name: "x", projects: ["21"], due_on: "2026-12-01", custom_fields: { "61": "Human" } },
 		});
-		expect(message(wrongOwner.body)).toContain('custom field "Owner" must be one of AI');
+		expect(message(wrongOwner.body)).toContain("custom_fields.61 must be one of 71");
 	});
 
 	it("shapes updates too, and keeps required members from being cleared", async () => {
@@ -261,7 +261,7 @@ rules:
     deny: [task:create]
 `;
 		const { gate } = await setupGate(policy, {
-			resolver: { ...fakeResolver, me: () => Promise.resolve({ gid: "51", name: "Me" }) },
+			context: { ...CONTEXT, me: { gid: "51", name: "Me" } },
 		});
 		await expect(
 			gate.authorize({ method: "POST", path: "/tasks", body: { name: "x", projects: ["21"] } }),

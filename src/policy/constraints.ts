@@ -23,13 +23,9 @@ interface FieldRequirement {
 	readonly contains?: string;
 	readonly matches?: RegExp;
 	readonly not_matches?: RegExp;
-	/**
-	 * The values a request may (or may not) carry, as Asana takes them (the
-	 * gid of an option, tag, project or team named in the policy), each with
-	 * how the policy wrote it.
-	 */
-	readonly in?: ReadonlyMap<string, string>;
-	readonly not_in?: ReadonlyMap<string, string>;
+	/** The values a request may (or may not) carry, as Asana takes them: a gid where the member names an object. */
+	readonly in?: ReadonlySet<string>;
+	readonly not_in?: ReadonlySet<string>;
 	readonly min_length?: number;
 	readonly max_length?: number;
 	/** A number, or a date (`YYYY-MM-DD`, ISO 8601, `today`, `now`, `+7d`, `-1d`). */
@@ -129,22 +125,16 @@ function textViolations(text: string, requirement: FieldRequirement): Violation[
 	return checks.filter(([ok]) => !ok).map(([, message]) => message);
 }
 
-/** The values of an `in` / `not_in` set as a message lists them: as written, with the gid to send for a name. */
-const listed = (values: ReadonlyMap<string, string>): string =>
-	[...values]
-		.map(([value, written]) => (written === value ? value : `${written} (${value})`))
-		.join(", ");
-
 /** Checks the value(s) of a member against the `in` / `not_in` sets. */
 function setViolations(texts: readonly string[], requirement: FieldRequirement): Violation[] {
 	const violations: Violation[] = [];
 	const allowed = requirement.in;
 	if (allowed !== undefined && texts.some((text) => !allowed.has(text))) {
-		violations.push(`must be one of ${listed(allowed)}`);
+		violations.push(`must be one of ${[...allowed].join(", ")}`);
 	}
 	const denied = requirement.not_in;
 	if (denied !== undefined && texts.some((text) => denied.has(text))) {
-		violations.push(`must not be one of ${listed(denied)}`);
+		violations.push(`must not be one of ${[...denied].join(", ")}`);
 	}
 	return violations;
 }

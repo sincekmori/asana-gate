@@ -11,7 +11,7 @@ import { createPlanContext } from "../src/gate/plan.ts";
 import { compilePolicy } from "../src/policy/compile.ts";
 import { workspaceFacts } from "../src/policy/evaluate.ts";
 import { parsePolicy } from "../src/policy/load.ts";
-import { fakeResolver } from "./helpers/fake-resolver.ts";
+import { CONTEXT } from "./helpers/world.ts";
 
 /** Operations whose classification does not name a valid action (the batch endpoint has none by design). */
 const invalidActions = (): string[] =>
@@ -50,9 +50,9 @@ const summaries = (ids: readonly OperationId[]): Record<string, string> =>
  * returns the reads of path parameters the operation does not declare.
  */
 async function undeclaredParamReads(): Promise<string[]> {
-	const policy = await compilePolicy(
+	const policy = compilePolicy(
 		parsePolicy('version: 1\nworkspace: "1"\nrules:\n  - allow: ["*"]\n'),
-		fakeResolver,
+		CONTEXT,
 	);
 	const loaded = (type: Resource | undefined, gid: string): unknown => ({
 		type,

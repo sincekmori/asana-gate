@@ -116,7 +116,7 @@ describe("nested references", () => {
 		"removes a parent that a rule hides by its tags, named $label",
 		async ({ query }) => {
 			const { fake, gate } = await setupGate(`${POLICY}
-  - where: { project: "21", tag: frozen }
+  - where: { project: "21", tag: "42" }
     deny: [task:read]
 `);
 			const parent = createTask(fake, { tags: ["42"] });
@@ -131,7 +131,7 @@ describe("nested references", () => {
 		"removes a parent that a rule hides by its section, named $label",
 		async ({ query }) => {
 			const { fake, gate } = await setupGate(`${POLICY}
-  - where: { project: "21", section: Done }
+  - where: { project: "21", section: "32" }
     deny: [task:read]
 `);
 			const parent = createTask(fake);
@@ -148,7 +148,7 @@ describe("nested references", () => {
 		"redacts a parent by a rule that names its tags, named $label",
 		async ({ query }) => {
 			const { fake, gate } = await setupGate(`${POLICY}
-  - where: { tag: ai-ok }
+  - where: { tag: "41" }
     redact: { task: [name] }
 `);
 			const parent = createTask(fake, { tags: ["41"] });

@@ -2,7 +2,7 @@
 name: asana-gate
 description: >-
   Operate Asana through asana-gate, the policy gateway that puts a declarative YAML policy in front of the Asana REST API for AI agents, as MCP tools (asana_*) and the asana-gate command line.
-  Use this whenever a task touches asana-gate in any way: writing or fixing a policy (where/allow/deny scopes, constraints such as required members, title prefixes, rate limits and confirmations), running asana-gate commands, calling its MCP tools, reading its refusals (404 Not a recognized ID, 403 asana-gate:, 400 does not satisfy the policy, 428 confirmation, 429 limit), configuring .asana-gate settings or the cache, or deciding what an agent may do in Asana.
+  Use this whenever a task touches asana-gate in any way: writing or fixing a policy (where/allow/deny scopes, constraints such as required members, title prefixes, rate limits and confirmations), running asana-gate commands, calling its MCP tools, reading its refusals (404 Not a recognized ID, 403 asana-gate:, 400 does not satisfy the policy, 428 confirmation, 429 limit), configuring .asana-gate settings, or deciding what an agent may do in Asana.
   Also applies when the user mentions allowed_actions, an Asana policy, the gate, or an MCP server for Asana without naming asana-gate.
 license: Apache-2.0
 metadata:
@@ -163,28 +163,30 @@ asana-gate api POST /tasks -d '{"name": "Write docs", "projects": ["120000000000
 - `asana-gate <resource> --help` lists the verbs, `asana-gate <resource> <verb> --help` the flags.
 - `asana-gate api <METHOD> <path> [-q key=value] [-d json|@file|-]` reaches every operation; `asana-gate explain <gid>` shows how the policy treats one object (it reads Asana unrestricted, so it is for policy owners, not agents).
 
-A project keeps its policy and settings in `.asana-gate/` (`policy.yaml`, `settings.yaml`, personal `settings.local.yaml`, and the git-ignored `token`); `~/.asana-gate/` holds your defaults, token, cache and logs; an administrator's managed settings override everything.
+A project keeps its policy and settings in `.asana-gate/` (`policy.yaml`, `settings.yaml`, personal `settings.local.yaml`, and the git-ignored `token`); `~/.asana-gate/` holds your defaults, token and logs; an administrator's managed settings override everything.
 A `~/.asana-gate/policy.yaml` and an administrator's `managed-policy.yaml`, when present, bound the project's policy: an action is allowed only when every file allows it, so a file that does not mention an action denies it.
 Commands find `.asana-gate` by walking up from the working directory; `-C <dir>` runs a command as if started in `<dir>`.
 The token comes from `ASANA_ACCESS_TOKEN`, else the `token.command` of the user's settings, else `.asana-gate/token` in the project or `~/.asana-gate/token`; it is never printed, and `asana-gate token status` says which source is in use.
-`asana-gate init` creates the project directory (`--agent claude-code` also wires Claude Code), `asana-gate check` validates the settings, the token and every object the policy names against Asana (exit code 1 on a problem), `asana-gate settings` shows the values in force and where each comes from, and `asana-gate cache` shows or clears the on-disk cache of workspace names.
+`asana-gate init` creates the project directory (`--agent claude-code` also wires Claude Code), `asana-gate check` validates the settings, the token and every object the policy names against Asana (exit code 1 on a problem), and `asana-gate settings` shows the values in force and where each comes from.
 In a host without MCP (Claude Cowork, for example) work from the folder that holds `.asana-gate` with these commands, and run `asana-gate check` first: it tells in one go whether Node, the network, the token and the policy are all in place.
 Details: [references/cli.md](references/cli.md).
 
 ## Writing or changing a policy
 
 A policy names one workspace and lists rules; their order does not matter.
+It names every object by gid, in quotes: a name tells no object from another, so a name is refused when the policy loads.
+Say what a gid stands for in a comment.
 
 ```yaml
 version: 1
-workspace: "1200000000000001" # a gid or a name
+workspace: "1200000000000001" # Acme
 rules:
   - allow: [read] # no `where`: the whole workspace
-  - where: { project: "Mobile App" }
+  - where: { project: "1200000000000123" } # Mobile App
     allow: ["task:*", story:create, tag:apply]
-  - where: { project: "Mobile App", section: "Done" }
+  - where: { section: "1200000000000132" } # its Done section
     deny: [modify] # frozen but still visible; deny: ["*"] would hide it
-  - where: { project: "Mobile App" } # constraints: what requests must look like
+  - where: { project: "1200000000000123" } # constraints: what requests must look like
     require: { task: { due_on: true } }
     apply: { task: { name: { prefix: "[bot] " } } }
     confirm: [task:delete]
@@ -193,8 +195,8 @@ rules:
 
 How a request is decided:
 
-1. **Scope.** `where` keys: `team`, `portfolio`, `project`, `section` (named inside its `project`), `subtree` (a task gid and all its subtasks), `task` (a gid), `unhomed: true` (tasks in no project); the filters `tag`, `assignee` (`me`, a gid or an email) and `custom_field: { Name: value }`; and the state filters `created_by`, `completed`, `has_parent`, `name: { prefix | suffix | contains | matches }`, `overdue`, `due_within`, `created_within`.
-   Keys in one `where` are ANDed, and a name is resolved against Asana when the policy loads, so an unknown name is an error rather than a silent no-match.
+1. **Scope.** `where` keys: `team`, `portfolio`, `project`, `section`, `subtree` (a task and all its subtasks), `task`, `unhomed: true` (tasks in no project); the filters `tag`, `assignee` (`me` or a user's gid) and `custom_field: { "<field gid>": <value> }`, a value being the gid of an option, a user or another object the field holds, or its text when it holds none; and the state filters `created_by`, `completed`, `has_parent`, `name: { prefix | suffix | contains | matches }`, `overdue`, `due_within`, `created_within`.
+   Keys in one `where` are ANDed, and each takes one gid or a list (any of them matches).
 2. **Actions.** `<resource>:<verb>` such as `task:update`; the groups `read`, `modify` (every verb but read), `write` (read plus every creating and modifying verb) and `admin` (everything); the wildcards `task:*` and `*:delete`.
    `read` is the prerequisite of every verb: an object whose `read` is not allowed is invisible, whatever else a rule says.
    Updating `completed` needs `task:complete`, as does the `approval_status` of an approval task; `assignee` needs `task:assign`, a project's `archived` needs `project:archive`; other members need `update`.
@@ -207,12 +209,12 @@ How a request is decided:
    When several policy files are in force, every file must allow an action, each by its own rules (see "Several policies" in [references/policy.md](references/policy.md)).
 4. **Constraints** shape the requests made in a rule's scope and may stand alone, without `allow`: `require` (per resource and member, `true` for "must be present", or operators `prefix`, `suffix`, `contains`, `matches`, `not_matches`, `in`, `not_in`, `min_length`, `max_length`, `min`, `max`), `apply` (a bare default value, or `default`, `value`, `prefix`, `suffix`, `add`), `forbid` (members that may not be set), `redact` (members removed from responses), `limit` (`max` per `per`, such as `1h`), `confirm` (actions a person must approve).
    `apply` runs before `require`, so a prefix one rule adds satisfies the prefix another requires; every matching rule's `require` holds, the most specific rule's `apply` wins per member, and `forbid`, `redact` and `confirm` add up.
-   A request sends options, tags, projects and teams by gid, as Asana takes them, also where the policy names them; a refusal lists each allowed value with its gid.
+   The policy names options, tags, projects, teams and users as a request sends them, by gid (a user also as `me`), and a refusal lists the gids allowed.
    Duplicating or instantiating a template is held to the constraints on the members its request sets (`name`, and a project's `team` and `privacy_setting`).
-   Custom fields nest by name: `require: { task: { custom_fields: { Owner: { in: [AI] } } } }`.
+   Custom fields nest by the gid of the field: `require: { task: { custom_fields: { "1200000000000161": { in: ["1200000000000171"] } } } }`.
 5. **`fields`** on an `allow` rule limits updates to the listed members: `allow: [read]` with `fields: { task: [completed, due_on] }` lets the agent update only those two (and complete, which `completed` stands for).
 
-Workflow: `asana-gate init` writes `.asana-gate/policy.yaml` from the workspace (its teams and projects listed as comments to start from), then edit it, then `asana-gate check` (resolves every name, warns about rules that cannot work, confirms the token), then `asana-gate explain <gid>` to see which rule decides each action on one object and which constraints are in force.
+Workflow: `asana-gate init` writes `.asana-gate/policy.yaml` from the workspace (its teams and projects listed as comments to start from), then edit it, then `asana-gate check` (fails on a gid that names nothing and on a value a custom field cannot hold, listing an enum field's options with their gids; warns about rules that cannot work; confirms the token), then `asana-gate explain <gid>` to see which rule decides each action on one object and which constraints are in force.
 The full reference, every key and value included, is in [references/policy.md](references/policy.md); the MCP server's transports and confirmation flow are in [references/mcp.md](references/mcp.md).
 
 ## Resources and verbs

@@ -88,8 +88,6 @@ type ResponsePlan =
 interface Plan {
 	readonly checks: readonly Check[];
 	readonly response: ResponsePlan;
-	/** Objects whose cached state is stale after the request succeeds. */
-	readonly invalidate?: readonly { readonly type: Resource; readonly gid: string }[];
 	/** Body to send instead of the caller's. */
 	readonly data?: unknown;
 	/** Asana's response, already read while planning: the request is not sent, and this is answered instead. */

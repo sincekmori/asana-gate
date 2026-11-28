@@ -12,26 +12,29 @@ const POLICY_SCHEMA_URL =
 /** Matches an Asana gid (a string of digits). */
 const GID_PATTERN = /^\d+$/u;
 
-/** Whether a reference is a gid rather than a name. */
+/** Whether a text is a gid. */
 const isGid = (ref: string): boolean => GID_PATTERN.test(ref);
 
-/** Whether a named object is the one `ref` names: by gid when `ref` is one, else by name. */
-function matches(ref: string): (item: { readonly gid: string; readonly name: string }) => boolean {
-	const byGid = isGid(ref);
-	return (item) => (byGid ? item.gid === ref : item.name === ref);
-}
-
-const RefSchema = z.string().min(1).describe("A gid or a name");
-const RefArraySchema = z.array(RefSchema).min(1);
-const RefListSchema = z
-	.union([RefSchema, RefArraySchema])
-	.describe("One reference, or a list of references (any of them matches)");
-const GidSchema = z.string().regex(GID_PATTERN, "expected a gid (a string of digits)");
+/**
+ * How a policy names an object: by its gid, which alone tells one object
+ * from another (two projects may share a name). A gid goes in quotes, or
+ * YAML reads it as a number.
+ */
+const GID_HINT = 'expected a gid in quotes, such as "1200000000000123"';
+const GidSchema = z.string({ error: GID_HINT }).regex(GID_PATTERN, GID_HINT);
 const GidArraySchema = z.array(GidSchema).min(1);
-const GidListSchema = z.union([GidSchema, GidArraySchema]);
+const GidListSchema = z
+	.union([GidSchema, GidArraySchema], { error: `${GID_HINT}, or a list of them` })
+	.describe("One gid, or a list of gids (any of them matches)");
+/** How a policy names a user: the token's own (`me`), or a gid. */
+const USER_HINT = 'expected "me" or a gid in quotes';
+const UserSchema = z.union([z.literal("me"), GidSchema], { error: USER_HINT });
+const UserListSchema = z.union([UserSchema, z.array(UserSchema).min(1)], {
+	error: `${USER_HINT}, or a list of them`,
+});
 const ScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
 const CustomFieldValueListSchema = z.union([ScalarSchema, z.array(ScalarSchema).min(1)]);
-const CustomFieldPredicateSchema = z.record(z.string().min(1), CustomFieldValueListSchema);
+const CustomFieldPredicateSchema = z.record(GidSchema, CustomFieldValueListSchema);
 const NonEmptyString = z.string().min(1);
 const FieldNamesSchema = z.array(NonEmptyString).min(1);
 const NamePredicateSchema = z
@@ -62,7 +65,9 @@ const FieldRequirementSchema = z
 		contains: z.string().optional(),
 		matches: z.string().optional().describe("A regular expression the value must match"),
 		not_matches: z.string().optional().describe("A regular expression the value must not match"),
-		in: ScalarListSchema.optional().describe("Allowed values (gids or names for references)"),
+		in: ScalarListSchema.optional().describe(
+			"Allowed values (gids, where the member names objects)",
+		),
 		not_in: ScalarListSchema.optional(),
 		min_length: z.number().int().nonnegative().optional(),
 		max_length: z.number().int().nonnegative().optional(),
@@ -73,17 +78,17 @@ const FieldRequirementSchema = z
 const RequirementSchema = z.union([z.literal(true), FieldRequirementSchema]);
 const RequirementOrNestedSchema = z.union([
 	RequirementSchema,
-	z.record(NonEmptyString, RequirementSchema),
+	z.record(GidSchema, RequirementSchema),
 ]);
-// Only `custom_fields` nests by field name; any other member takes a requirement
-// directly, so a misspelled operator is an error rather than a nested name.
+// Only `custom_fields` nests, by the gid of each field; any other member takes a
+// requirement directly, so a misspelled operator is an error.
 const ResourceRequirementsSchema = z
 	.object({ custom_fields: RequirementOrNestedSchema.optional() })
 	.catchall(RequirementSchema);
 const RequireSchema = z
 	.record(NonEmptyString, ResourceRequirementsSchema)
 	.describe(
-		"Per resource and request member, what create and update requests must satisfy (`true` means present); `custom_fields` nests by field name",
+		"Per resource and request member, what create and update requests must satisfy (`true` means present); `custom_fields` nests by field gid",
 	);
 const ValueSchema = z.union([ScalarSchema, ScalarListSchema]);
 const FieldApplicationSchema = z
@@ -95,15 +100,10 @@ const FieldApplicationSchema = z
 		add: ScalarListSchema.optional().describe("Values a list member must contain"),
 	})
 	.describe("How a request member is completed or rewritten");
-/** The operator names of requirements and applications; under `custom_fields`, any other key is a field name. */
-const OPERATOR_KEYS: ReadonlySet<string> = new Set([
-	...Object.keys(FieldRequirementSchema.shape),
-	...Object.keys(FieldApplicationSchema.shape),
-]);
 const ApplicationSchema = z.union([ValueSchema, FieldApplicationSchema]);
 const ApplicationOrNestedSchema = z.union([
 	ApplicationSchema,
-	z.record(NonEmptyString, ApplicationSchema),
+	z.record(GidSchema, ApplicationSchema),
 ]);
 const ResourceApplicationsSchema = z
 	.object({ custom_fields: ApplicationOrNestedSchema.optional() })
@@ -111,7 +111,7 @@ const ResourceApplicationsSchema = z
 const ApplySchema = z
 	.record(NonEmptyString, ResourceApplicationsSchema)
 	.describe(
-		"Per resource and request member, how create and update requests are completed (a bare value is a default); `custom_fields` nests by field name",
+		"Per resource and request member, how create and update requests are completed (a bare value is a default); `custom_fields` nests by field gid",
 	);
 const FieldListSchema = z.record(NonEmptyString, FieldNamesSchema);
 const LimitSchema = z
@@ -119,58 +119,37 @@ const LimitSchema = z
 	.describe("Per action, how many requests this scope allows per period");
 
 /** The `where` clause of a rule: the scope it applies to. All keys are ANDed. */
-const WhereSchema = z
-	.strictObject({
-		team: RefListSchema.optional().describe("Team(s): the team itself and every project in it"),
-		portfolio: RefListSchema.optional().describe(
-			"Portfolio(s): the portfolio itself and every project in it, including nested portfolios",
-		),
-		project: RefListSchema.optional().describe("Project(s): the project and everything inside it"),
-		section: RefListSchema.optional().describe(
-			"Section(s) of the project(s) given by `project` (a section name needs `project`)",
-		),
-		task: GidListSchema.optional().describe("Task gid(s): exactly these tasks"),
-		subtree: GidListSchema.optional().describe(
-			"Task gid(s): these tasks and all of their subtasks",
-		),
-		unhomed: z.literal(true).optional().describe("Tasks that belong to no project"),
-		tag: RefListSchema.optional().describe(
-			"Cross-cutting filter: tasks carrying any of these tags",
-		),
-		assignee: RefListSchema.optional().describe(
-			'Cross-cutting filter: tasks assigned to any of these users ("me", a gid or an email)',
-		),
-		custom_field: CustomFieldPredicateSchema.optional().describe(
-			"Cross-cutting filter: tasks whose custom field (by name or gid) has any of the given values",
-		),
-		created_by: RefListSchema.optional().describe(
-			'State filter: tasks created by any of these users ("me", a gid or an email)',
-		),
-		completed: z.boolean().optional().describe("State filter: whether the task is completed"),
-		has_parent: z.boolean().optional().describe("State filter: whether the task is a subtask"),
-		name: NamePredicateSchema.optional().describe("State filter: the object's name"),
-		overdue: z
-			.boolean()
-			.optional()
-			.describe("State filter: whether the task's due date has passed"),
-		due_within: DurationSchema.optional().describe(
-			"State filter: tasks due within this duration from now",
-		),
-		created_within: DurationSchema.optional().describe(
-			"State filter: tasks created within this duration",
-		),
-	})
-	.superRefine((where, ctx) => {
-		const sections = where.section === undefined ? [] : [where.section].flat();
-		if (where.project === undefined && sections.some((ref) => !isGid(ref))) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["section"],
-				message:
-					"a section name can only be resolved inside a `project`; add `project` or use the section gid",
-			});
-		}
-	});
+const WhereSchema = z.strictObject({
+	team: GidListSchema.optional().describe("Team(s): the team itself and every project in it"),
+	portfolio: GidListSchema.optional().describe(
+		"Portfolio(s): the portfolio itself and every project in it, including nested portfolios",
+	),
+	project: GidListSchema.optional().describe("Project(s): the project and everything inside it"),
+	section: GidListSchema.optional().describe("Section(s): the section and the tasks in it"),
+	task: GidListSchema.optional().describe("Task gid(s): exactly these tasks"),
+	subtree: GidListSchema.optional().describe("Task gid(s): these tasks and all of their subtasks"),
+	unhomed: z.literal(true).optional().describe("Tasks that belong to no project"),
+	tag: GidListSchema.optional().describe("Cross-cutting filter: tasks carrying any of these tags"),
+	assignee: UserListSchema.optional().describe(
+		'Cross-cutting filter: tasks assigned to any of these users ("me" or a gid)',
+	),
+	custom_field: CustomFieldPredicateSchema.optional().describe(
+		"Cross-cutting filter: tasks whose custom field (by gid) holds any of the given values: the gid of an option, a user or another object the field holds, or its text",
+	),
+	created_by: UserListSchema.optional().describe(
+		'State filter: tasks created by any of these users ("me" or a gid)',
+	),
+	completed: z.boolean().optional().describe("State filter: whether the task is completed"),
+	has_parent: z.boolean().optional().describe("State filter: whether the task is a subtask"),
+	name: NamePredicateSchema.optional().describe("State filter: the object's name"),
+	overdue: z.boolean().optional().describe("State filter: whether the task's due date has passed"),
+	due_within: DurationSchema.optional().describe(
+		"State filter: tasks due within this duration from now",
+	),
+	created_within: DurationSchema.optional().describe(
+		"State filter: tasks created within this duration",
+	),
+});
 
 /** One rule of a policy. */
 const RuleSchema = z
@@ -231,8 +210,8 @@ const RuleSchema = z
 const PolicyFileSchema = z.strictObject({
 	$schema: z.string().optional(),
 	version: z.literal(1),
-	workspace: RefSchema.optional().describe(
-		"The one workspace this policy governs (gid or name); a file that bounds the project's policy may leave it out and is then in force wherever that one is",
+	workspace: GidSchema.optional().describe(
+		"The gid of the one workspace this policy governs; a file that bounds the project's policy may leave it out and is then in force wherever that one is",
 	),
 	rules: z.array(RuleSchema).describe("The rules; order does not matter (specificity does)"),
 });
@@ -243,14 +222,5 @@ type PolicyApplication = z.infer<typeof FieldApplicationSchema>;
 type PolicyRule = z.infer<typeof RuleSchema>;
 type PolicyFile = z.infer<typeof PolicyFileSchema>;
 
-export {
-	GidSchema,
-	isGid,
-	matches,
-	OPERATOR_KEYS,
-	POLICY_SCHEMA_URL,
-	PolicyFileSchema,
-	RuleSchema,
-	WhereSchema,
-};
+export { GidSchema, isGid, POLICY_SCHEMA_URL, PolicyFileSchema, RuleSchema, WhereSchema };
 export type { PolicyApplication, PolicyFile, PolicyRequirement, PolicyRule, PolicyWhere };

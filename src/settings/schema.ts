@@ -37,15 +37,6 @@ const LogSchema = z.strictObject({
 			"A file log lines are appended to besides stderr, relative to the settings file (default: ~/.asana-gate/logs/asana-gate.log); null for none",
 		),
 });
-const CacheSchema = z.strictObject({
-	enabled: z
-		.boolean()
-		.describe(
-			"Whether the names and gids of the workspace's structure are cached on disk between runs",
-		),
-	dir: z.string().describe("Where the cache lives; relative to the settings file"),
-	ttl: DurationSchema.describe("How long a cached listing is trusted before it is read again"),
-});
 const ConcurrencySchema = z.strictObject({
 	reads: z
 		.number()
@@ -104,7 +95,6 @@ const SettingsSchema = z.strictObject({
 	policy: z.string().optional().describe("The policy file"),
 	token: TokenSchema,
 	log: LogSchema,
-	cache: CacheSchema,
 	concurrency: ConcurrencySchema,
 	retries: RetriesSchema,
 	asana: AsanaSchema,
@@ -117,7 +107,6 @@ const SettingsFileSchema = z.strictObject({
 	policy: z.string().optional().describe("The policy file, relative to this settings file"),
 	token: TokenSchema.partial().optional(),
 	log: LogSchema.partial().optional(),
-	cache: CacheSchema.partial().optional(),
 	concurrency: ConcurrencySchema.partial().optional(),
 	retries: RetriesSchema.partial().optional(),
 	asana: AsanaSchema.partial().optional(),

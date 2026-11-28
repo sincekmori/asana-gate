@@ -15,23 +15,19 @@ import { expandActionPatterns } from "./actions.ts";
 import {
 	compileApplication,
 	compileRequirement,
-	memberResolver,
-	optionResolver,
+	memberReader,
 	type RawApplication,
-	type ValueResolver,
+	type ValueReader,
 } from "./compile-values.ts";
-import type { NameResolver } from "./compile.ts";
 import type { FieldApplication, FieldRequirement, RateLimit } from "./constraints.ts";
 import { durationMs } from "./durations.ts";
-import { OPERATOR_KEYS, type PolicyRequirement, type PolicyRule } from "./schema.ts";
-import { type CompiledConstraints, PolicyError } from "./types.ts";
+import { isGid, type PolicyRequirement, type PolicyRule } from "./schema.ts";
+import { type CompiledConstraints, type Me, PolicyError } from "./types.ts";
 
 /** Context shared by the constraint compilers. */
 interface ConstraintContext {
-	readonly resolver: NameResolver;
-	readonly workspace: string;
+	readonly me: Me;
 	readonly label: string;
-	readonly labels: Map<string, string>;
 }
 
 function asResource(name: string, label: string): Resource {
@@ -58,74 +54,50 @@ function assertRequestMember(resource: Resource, member: string, label: string):
 	assertMember(requestMembers(resource), { resource, member, label });
 }
 
-/**
- * Whether a `custom_fields` spec nests field names, rather than constraining
- * the member itself. A spec that mixes the two is refused: reading it either
- * way would drop part of it.
- */
-function isNested(value: unknown, label: string): value is Record<string, unknown> {
-	if (!isObject(value)) {
-		return false;
-	}
-	const keys = Object.keys(value);
-	const operators = keys.filter((key) => OPERATOR_KEYS.has(key));
-	if (operators.length > 0 && operators.length < keys.length) {
-		const fields = keys.filter((key) => !OPERATOR_KEYS.has(key));
-		throw new PolicyError(
-			`${label}: mixes operators (${operators.join(", ")}) with custom fields (${fields.join(", ")}); put the operators under each field, and name a field called like an operator by its gid`,
-		);
-	}
-	return operators.length === 0;
-}
+/** Whether a `custom_fields` spec nests fields by gid, rather than constraining the member itself by operators. */
+const isNested = (value: unknown): value is Record<string, unknown> =>
+	isObject(value) && Object.keys(value).some((key) => isGid(key));
 
 /** One compiled member entry of a `require` or `apply` block. */
 type MemberEntry<Out> = readonly [key: string, value: Out];
 
 /** Compiles the entries of one member spec: a direct member, or the custom fields nested under `custom_fields`. */
-async function compileMemberEntries<Out>(
+function compileMemberEntries<Out>(
 	args: { resource: Resource; member: string; spec: unknown },
 	context: ConstraintContext,
-	compile: (raw: unknown, label: string, resolve: ValueResolver | undefined) => Promise<Out>,
-): Promise<MemberEntry<Out>[]> {
+	compile: (raw: unknown, label: string, read: ValueReader) => Out,
+): MemberEntry<Out>[] {
 	const label = `${context.label}.${args.resource}.${args.member}`;
 	assertRequestMember(args.resource, args.member, context.label);
-	if (args.member !== "custom_fields" || !isNested(args.spec, label)) {
-		return [[args.member, await compile(args.spec, label, memberResolver(args.member, context))]];
+	if (args.member !== "custom_fields" || !isNested(args.spec)) {
+		const read = memberReader(args.member, { me: context.me, label });
+		return [[args.member, compile(args.spec, label, read)]];
 	}
-	const nested = await Promise.all(
-		Object.entries(args.spec).map(async ([fieldRef, fieldSpec]): Promise<MemberEntry<Out>> => {
-			const definition = await context.resolver.customField(fieldRef, context.workspace);
-			const key = `custom_fields.${definition.gid}`;
-			context.labels.set(key, `custom field "${definition.name}"`);
-			return [key, await compile(fieldSpec, `${label}.${fieldRef}`, optionResolver(definition))];
-		}),
-	);
-	return nested;
+	// What a custom field takes is written as Asana takes it: the gid of an option or of an object, a text, a number.
+	return Object.entries(args.spec).map(([field, spec]) => [
+		`custom_fields.${field}`,
+		compile(spec, `${label}.${field}`, (value) => value),
+	]);
 }
 
 /**
- * Compiles one `require` or `apply` block: `{ resource: { member: spec, custom_fields: { name: spec } } }`
+ * Compiles one `require` or `apply` block: `{ resource: { member: spec, custom_fields: { gid: spec } } }`
  * into member keys (`name`, `custom_fields.<gid>`).
  */
-async function compileMembers<Out>(
+function compileMembers<Out>(
 	block: Record<string, Record<string, unknown>>,
 	context: ConstraintContext,
-	compile: (raw: unknown, label: string, resolve: ValueResolver | undefined) => Promise<Out>,
-): Promise<Map<Resource, Map<string, Out>>> {
-	const perResource = await Promise.all(
-		Object.entries(block).map(
-			async ([resourceName, members]): Promise<[Resource, Map<string, Out>]> => {
-				const resource = asResource(resourceName, context.label);
-				const entries = await Promise.all(
-					Object.entries(members).map(([member, spec]) =>
-						compileMemberEntries({ resource, member, spec }, context, compile),
-					),
-				);
-				return [resource, new Map(entries.flat())];
-			},
-		),
+	compile: (raw: unknown, label: string, read: ValueReader) => Out,
+): Map<Resource, Map<string, Out>> {
+	return new Map(
+		Object.entries(block).map(([resourceName, members]): [Resource, Map<string, Out>] => {
+			const resource = asResource(resourceName, context.label);
+			const entries = Object.entries(members).map(([member, spec]) =>
+				compileMemberEntries({ resource, member, spec }, context, compile),
+			);
+			return [resource, new Map(entries.flat())];
+		}),
 	);
-	return new Map(perResource);
 }
 
 function compileFieldLists(
@@ -162,40 +134,32 @@ function compileLimits(block: PolicyRule["limit"]): Map<Action, RateLimit> {
 }
 
 /** Compiles a rule's constraint clauses, or `undefined` when it has none. */
-async function compileConstraints(
+function compileConstraints(
 	raw: PolicyRule,
 	index: number,
-	context: { resolver: NameResolver; workspace: string },
-): Promise<CompiledConstraints | undefined> {
+	me: Me,
+): CompiledConstraints | undefined {
 	const hasAny = [raw.require, raw.apply, raw.forbid, raw.redact, raw.limit, raw.confirm].some(
 		(c) => c !== undefined,
 	);
 	if (!hasAny) {
 		return undefined;
 	}
-	const labels = new Map<string, string>();
-	const base = { resolver: context.resolver, workspace: context.workspace, labels };
-	const [require, apply] = await Promise.all([
-		compileMembers<FieldRequirement>(
-			raw.require ?? {},
-			{ ...base, label: `rules[${index}].require` },
-			(spec, label, resolve) =>
-				compileRequirement(spec as true | PolicyRequirement, label, resolve),
-		),
-		compileMembers<FieldApplication>(
-			raw.apply ?? {},
-			{ ...base, label: `rules[${index}].apply` },
-			(spec, _label, resolve) => compileApplication(spec as RawApplication, resolve),
-		),
-	]);
 	return {
-		require,
-		apply,
+		require: compileMembers<FieldRequirement>(
+			raw.require ?? {},
+			{ me, label: `rules[${index}].require` },
+			(spec, label, read) => compileRequirement(spec as true | PolicyRequirement, label, read),
+		),
+		apply: compileMembers<FieldApplication>(
+			raw.apply ?? {},
+			{ me, label: `rules[${index}].apply` },
+			(spec, _label, read) => compileApplication(spec as RawApplication, read),
+		),
 		forbid: compileFieldLists(raw.forbid, `rules[${index}].forbid`, assertRequestMember),
 		redact: compileFieldLists(raw.redact, `rules[${index}].redact`, assertResponseMember),
 		limit: compileLimits(raw.limit),
 		confirm: expandActionPatterns(raw.confirm ?? [], { grant: false }),
-		labels,
 	};
 }
 

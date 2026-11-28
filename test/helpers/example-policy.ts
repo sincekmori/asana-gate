@@ -5,28 +5,28 @@ import { compilePolicy } from "../../src/policy/compile.ts";
 import { EMPTY, type Facts } from "../../src/policy/evaluate.ts";
 import { parsePolicy } from "../../src/policy/load.ts";
 import type { Policy } from "../../src/policy/types.ts";
-import { fakeResolver } from "./fake-resolver.ts";
+import { CONTEXT } from "./world.ts";
 
-/** The policy of the design document, written against {@link WORLD}. */
+/** The policy of the design document, written against the world of ./world.ts. */
 export const EXAMPLE = `
 version: 1
-workspace: "Acme"
+workspace: "1"
 rules:
   - allow: [read]
-  - where: { team: "Platform" }
+  - where: { team: "11" }
     allow: [write]
   - where: { project: "21" }
     allow: ["task:*", story:create]
-  - where: { project: "21", section: "Done" }
+  - where: { project: "21", section: "32" }
     deny: [task:update, task:delete]
-  - where: { tag: "ai-ok" }
+  - where: { tag: "41" }
     allow: [task:update]
-  - where: { project: "Design System" }
+  - where: { project: "22" }
     allow: [read]
     fields: { task: [completed, assignee, due_on] }
-  - where: { project: "Secret" }
+  - where: { project: "23" }
     deny: ["*"]
-  - where: { assignee: me, custom_field: { Owner: AI } }
+  - where: { assignee: me, custom_field: { "61": "71" } }
     allow: [task:complete]
   - where: { unhomed: true }
     allow: [task:create]
@@ -60,4 +60,4 @@ export const tagged = (project: string, tag: string): Facts =>
 	taskIn(project, undefined, { tags: new Set([tag]) });
 
 /** The example policy, compiled once. */
-export const examplePolicy: Promise<Policy> = compilePolicy(parsePolicy(EXAMPLE), fakeResolver);
+export const examplePolicy: Policy = compilePolicy(parsePolicy(EXAMPLE), CONTEXT);

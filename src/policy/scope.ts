@@ -21,7 +21,7 @@ function compileName(name: NonNullable<PolicyWhere["name"]>): CompiledNamePredic
 	};
 }
 
-/** The state predicates of a scope (none of them needs the resolver). */
+/** The state predicates of a scope, which name no object. */
 function compileState(where: PolicyWhere): Partial<CompiledWhere> {
 	const dueWithinMs = where.due_within === undefined ? undefined : durationMs(where.due_within);
 	const createdWithinMs =

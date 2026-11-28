@@ -10,9 +10,9 @@
       "const": 1
     },
     "workspace": {
-      "description": "The one workspace this policy governs (gid or name); a file that bounds the project's policy may leave it out and is then in force wherever that one is",
+      "description": "The gid of the one workspace this policy governs; a file that bounds the project's policy may leave it out and is then in force wherever that one is",
       "type": "string",
-      "minLength": 1
+      "pattern": "^\\d+$"
     },
     "rules": {
       "type": "array",
@@ -28,16 +28,14 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "minLength": 1,
-                    "description": "A gid or a name"
+                    "pattern": "^\\d+$"
                   },
                   {
                     "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1,
-                      "description": "A gid or a name"
+                      "pattern": "^\\d+$"
                     }
                   }
                 ]
@@ -47,16 +45,14 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "minLength": 1,
-                    "description": "A gid or a name"
+                    "pattern": "^\\d+$"
                   },
                   {
                     "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1,
-                      "description": "A gid or a name"
+                      "pattern": "^\\d+$"
                     }
                   }
                 ]
@@ -66,35 +62,31 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "minLength": 1,
-                    "description": "A gid or a name"
+                    "pattern": "^\\d+$"
                   },
                   {
                     "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1,
-                      "description": "A gid or a name"
+                      "pattern": "^\\d+$"
                     }
                   }
                 ]
               },
               "section": {
-                "description": "Section(s) of the project(s) given by `project` (a section name needs `project`)",
+                "description": "Section(s): the section and the tasks in it",
                 "anyOf": [
                   {
                     "type": "string",
-                    "minLength": 1,
-                    "description": "A gid or a name"
+                    "pattern": "^\\d+$"
                   },
                   {
                     "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1,
-                      "description": "A gid or a name"
+                      "pattern": "^\\d+$"
                     }
                   }
                 ]
@@ -143,45 +135,57 @@
                 "anyOf": [
                   {
                     "type": "string",
-                    "minLength": 1,
-                    "description": "A gid or a name"
+                    "pattern": "^\\d+$"
                   },
                   {
                     "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1,
-                      "description": "A gid or a name"
+                      "pattern": "^\\d+$"
                     }
                   }
                 ]
               },
               "assignee": {
-                "description": "Cross-cutting filter: tasks assigned to any of these users (\"me\", a gid or an email)",
+                "description": "Cross-cutting filter: tasks assigned to any of these users (\"me\" or a gid)",
                 "anyOf": [
                   {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "A gid or a name"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "me"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^\\d+$"
+                      }
+                    ]
                   },
                   {
                     "minItems": 1,
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "description": "A gid or a name"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "me"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^\\d+$"
+                        }
+                      ]
                     }
                   }
                 ]
               },
               "custom_field": {
-                "description": "Cross-cutting filter: tasks whose custom field (by name or gid) has any of the given values",
+                "description": "Cross-cutting filter: tasks whose custom field (by gid) holds any of the given values: the gid of an option, a user or another object the field holds, or its text",
                 "type": "object",
                 "propertyNames": {
                   "type": "string",
-                  "minLength": 1
+                  "pattern": "^\\d+$"
                 },
                 "additionalProperties": {
                   "anyOf": [
@@ -199,20 +203,34 @@
                 }
               },
               "created_by": {
-                "description": "State filter: tasks created by any of these users (\"me\", a gid or an email)",
+                "description": "State filter: tasks created by any of these users (\"me\" or a gid)",
                 "anyOf": [
                   {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "A gid or a name"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "me"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^\\d+$"
+                      }
+                    ]
                   },
                   {
                     "minItems": 1,
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "description": "A gid or a name"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "me"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^\\d+$"
+                        }
+                      ]
                     }
                   }
                 ]
@@ -336,7 +354,7 @@
                               "type": "string"
                             },
                             "in": {
-                              "description": "Allowed values (gids or names for references)",
+                              "description": "Allowed values (gids, where the member names objects)",
                               "type": "array",
                               "items": {
                                 "type": ["string", "number", "boolean"]
@@ -376,7 +394,7 @@
                       "type": "object",
                       "propertyNames": {
                         "type": "string",
-                        "minLength": 1
+                        "pattern": "^\\d+$"
                       },
                       "additionalProperties": {
                         "anyOf": [
@@ -409,7 +427,7 @@
                                 "type": "string"
                               },
                               "in": {
-                                "description": "Allowed values (gids or names for references)",
+                                "description": "Allowed values (gids, where the member names objects)",
                                 "type": "array",
                                 "items": {
                                   "type": ["string", "number", "boolean"]
@@ -480,7 +498,7 @@
                         "type": "string"
                       },
                       "in": {
-                        "description": "Allowed values (gids or names for references)",
+                        "description": "Allowed values (gids, where the member names objects)",
                         "type": "array",
                         "items": {
                           "type": ["string", "number", "boolean"]
@@ -517,7 +535,7 @@
                 ]
               }
             },
-            "description": "Per resource and request member, what create and update requests must satisfy (`true` means present); `custom_fields` nests by field name"
+            "description": "Per resource and request member, what create and update requests must satisfy (`true` means present); `custom_fields` nests by field gid"
           },
           "apply": {
             "type": "object",
@@ -601,7 +619,7 @@
                       "type": "object",
                       "propertyNames": {
                         "type": "string",
-                        "minLength": 1
+                        "pattern": "^\\d+$"
                       },
                       "additionalProperties": {
                         "anyOf": [
@@ -742,7 +760,7 @@
                 ]
               }
             },
-            "description": "Per resource and request member, how create and update requests are completed (a bare value is a default); `custom_fields` nests by field name"
+            "description": "Per resource and request member, how create and update requests are completed (a bare value is a default); `custom_fields` nests by field gid"
           },
           "forbid": {
             "description": "Per resource, request members that may not be set",

@@ -15,7 +15,7 @@ version: 1
 workspace: "1"
 rules:
   - allow: [read]
-  - where: { team: Platform }
+  - where: { team: "11" }
     allow: [project:create]
     require:
       project:
