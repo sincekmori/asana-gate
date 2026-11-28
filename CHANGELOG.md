@@ -1,5 +1,25 @@
 # asana-gate
 
+## 0.6.0
+
+### Minor Changes
+
+- 44037f9: `asana-gate check` now checks every object a policy names, wherever a rule names it: the tags, users, projects, teams and custom fields of `require` and `apply`, beside those of `where`.
+  It also checks that each custom field can hold the values a rule writes for it: an option of an enum field, whose options it lists with their gids, a user of a people field, an object of a type a reference field takes.
+- 44037f9: A policy now names every object by its gid, in quotes, and a name is refused when the policy loads: a name tells no object from another, since two projects may share one and whoever renames an object would decide what a rule covers.
+  This goes for the workspace, for every `where` key, for the fields under `custom_fields` and for the values of the members that name objects (`tags`, `projects`, `team`, `assignee`, `followers`, `owner`); a user may still be `me`, and no longer an email.
+  A `custom_field` scope matches a field by the gid of what it holds (an option, a user, another object), where an option's name used to match too, and by the text Asana displays when it holds none.
+  A refusal lists the gids a member may take (`custom_fields.<gid> must be one of <gid>`).
+  Reading a policy now asks Asana who the token belongs to and what the workspace is called, and nothing else, so the on-disk cache of the workspace's names is gone with everything that served it: the `cache` settings, `ASANA_GATE_CACHE`, the `asana-gate cache` command, and `AsanaNameResolver` and `FileListingCache` in the library, where `policyFor(client, sources)` now compiles a policy for a client.
+  The directory `~/.asana-gate/cache` is no longer read and can be deleted.
+  `asana-gate init --workspace` takes a gid.
+- 44037f9: The gate now judges every request by what Asana says while it runs: it keeps nothing of Asana's answers between requests, where the MCP server used to keep where an object lives for half a minute, a project's team and the contents of a portfolio for five.
+  A task somebody moves out of a project, a project moved to another team and a project taken out of a portfolio are judged where they are from the next request on.
+  Within a request the gate still asks for each thing once, and once the request has written it asks again for what judges the answer.
+  A request therefore costs a read for each object it must place, where a running server used to answer some from memory: about one more request to Asana per operation, and a listing of each portfolio the policy names per request.
+  The project and the section a task is in are now judged by what placed the task, without a request for either, in a single object and in every item of a list.
+  In the library, `Gate` takes no `loader` and has none: each request gets a `FactsLoader` of its own, whose `objectTtlMs`, `projectTtlMs` and `portfolioTtlMs` options and `invalidate` method are gone.
+
 ## 0.5.1
 
 ### Patch Changes
