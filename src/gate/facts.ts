@@ -540,6 +540,11 @@ class FactsLoader {
 			return undefined;
 		}
 		if (this.carries(type, object)) {
+			// What was read carries what a load of the object asks for: a later one shares it.
+			const key = `${type}:${gid}`;
+			if (!this.asked.has(key)) {
+				this.asked.set(key, read);
+			}
 			const facts = await this.fromObject(type, object);
 			return facts === undefined ? undefined : { type, object, facts };
 		}

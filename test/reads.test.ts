@@ -281,3 +281,13 @@ describe("the project and the section a task is in", () => {
 		expect(requests(fake)).toStrictEqual(["GET /projects/22", "GET /projects/22/tasks"]);
 	});
 });
+
+describe("an object read to answer a request", () => {
+	it("is not asked for again to place what it shows that lives in it", async () => {
+		const { fake, gate } = await setupGate(PROJECT_POLICY);
+		const response = await gate.execute({ method: "GET", path: "/projects/21" });
+		// The project's status update lives in the project, which the read itself brought.
+		expect(data(response.body).current_status_update).toMatchObject({ gid: "91" });
+		expect(requests(fake).filter((request) => request === "GET /projects/21")).toHaveLength(1);
+	});
+});
